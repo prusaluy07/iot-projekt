@@ -1,5 +1,10 @@
 FROM python:3.11-slim
 
+# System-Updates und curl installieren
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Arbeitsverzeichnis setzen
 WORKDIR /app
 
