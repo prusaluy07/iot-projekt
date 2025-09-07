@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime
 from anythingllm_client import AnythingLLMClient, send_to_anythingllm
 import paho.mqtt.client as mqtt
@@ -15,24 +16,15 @@ class ErrorMessage(BaseModel):
     code: str
     description: str
 
-# FastAPI App
-app = FastAPI(
-    title="IoT-OPC-AnythingLLM Bridge",
-    description="Bridge zwischen OPC UA/MQTT und AnythingLLM",
-    version="1.0.0"
-)
-
-# AnythingLLM Client
-llm_client = AnythingLLMClient()
-
-# MQTT Client Setup
+# Globale Variablen
+llm_client = None
 mqtt_client = None
 
 def setup_mqtt():
     """MQTT Client Setup"""
     global mqtt_client
     
-    def on_connect(client, userdata, flags, rc):
+    def on_connect(client, userdata, flags, rc, properties=None):
         if rc == 0:
             print("✅ MQTT erfolgreich verbunden")
             client.subscribe("machines/+/errors")
@@ -53,14 +45,16 @@ def setup_mqtt():
             print(f"📨 MQTT empfangen: {machine}/{error_code}")
             
             # An AnythingLLM senden
-            llm_client.send_machine_error(machine, error_code, description)
+            if llm_client:
+                llm_client.send_machine_error(machine, error_code, description)
             
         except json.JSONDecodeError:
             print("❌ Ungültige JSON in MQTT-Nachricht")
         except Exception as e:
             print(f"❌ Fehler beim Verarbeiten der MQTT-Nachricht: {e}")
 
-    mqtt_client = mqtt.Client()
+    # MQTT Client mit aktueller API erstellen
+    mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     mqtt_client.on_connect = on_connect
     mqtt_client.on_message = on_message
     
@@ -77,9 +71,14 @@ def setup_mqtt():
         print(f"❌ MQTT Verbindung fehlgeschlagen: {e}")
         return False
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    global llm_client
     print("🚀 IoT-AnythingLLM Bridge startet...")
+    
+    # AnythingLLM Client initialisieren
+    llm_client = AnythingLLMClient()
     
     # AnythingLLM testen
     if llm_client.test_connection():
@@ -94,6 +93,22 @@ async def startup_event():
         print("⚠️  MQTT nicht verfügbar - aber App startet trotzdem")
     
     print("🎉 Bridge erfolgreich gestartet!")
+    
+    yield
+    
+    # Shutdown
+    print("🛑 Bridge wird heruntergefahren...")
+    if mqtt_client:
+        mqtt_client.loop_stop()
+        mqtt_client.disconnect()
+
+# FastAPI App mit Lifespan
+app = FastAPI(
+    title="IoT-OPC-AnythingLLM Bridge",
+    description="Bridge zwischen OPC UA/MQTT und AnythingLLM",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 @app.get("/")
 async def root():
@@ -110,7 +125,7 @@ async def root():
 @app.get("/status")
 async def status():
     """Status der Bridge"""
-    anythingllm_status = llm_client.test_connection()
+    anythingllm_status = llm_client.test_connection() if llm_client else False
     
     return {
         "anythingllm": "✅ Online" if anythingllm_status else "❌ Offline",
@@ -121,6 +136,9 @@ async def status():
 @app.post("/manual-error")
 async def manual_error(error: ErrorMessage):
     """Manuelles Senden eines Fehlers an AnythingLLM"""
+    if not llm_client:
+        raise HTTPException(status_code=500, detail="AnythingLLM Client nicht initialisiert")
+    
     try:
         result = llm_client.send_machine_error(error.machine, error.code, error.description)
         
@@ -139,6 +157,9 @@ async def manual_error(error: ErrorMessage):
 @app.get("/test")
 async def test_all():
     """Testet alle Verbindungen"""
+    if not llm_client:
+        return {"error": "AnythingLLM Client nicht initialisiert"}
+    
     # Test AnythingLLM
     test_result = send_to_anythingllm("TestMaschine", "TEST001", "Verbindungstest")
     
@@ -151,7 +172,10 @@ async def test_all():
 @app.post("/test-error")
 async def test_error():
     """Sendet einen Test-Fehler"""
-    result = send_to_anythingllm("Testmaschine_42", "E999", "Dies ist ein Testfehler vom IoT-Bridge")
+    if not llm_client:
+        raise HTTPException(status_code=500, detail="AnythingLLM Client nicht initialisiert")
+    
+    result = llm_client.send_machine_error("Testmaschine_42", "E999", "Dies ist ein Testfehler vom IoT-Bridge")
     return {"success": result is not None, "result": result}
 
 if __name__ == "__main__":
