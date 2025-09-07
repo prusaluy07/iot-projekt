@@ -6,76 +6,47 @@ from datetime import datetime
 class AnythingLLMClient:
     def __init__(self):
         self.base_url = os.getenv("ANYTHINGLLM_URL", "http://localhost:3001")
-        self.api_key = os.getenv("ANYTHINGLLM_API_KEY", "DEIN_API_KEY")
-        self.workspace_slug = os.getenv("ANYTHINGLLM_WORKSPACE", "wago-edge-copilot")
-        self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        print(f"🔗 AnythingLLM Client initialisiert: {self.base_url}")
-        print(f"📁 Workspace: {self.workspace_slug}")
+        self.embed_id = "1"
+        self.embed_uuid = "68d8890d-7266-47f0-912f-672fc5c0afc7"
+        print(f"🔗 AnythingLLM Embed-Widget initialisiert: {self.base_url}")
+        print(f"🎯 Embed ID: {self.embed_id} | UUID: {self.embed_uuid}")
 
     def test_connection(self) -> bool:
         """Testet die Verbindung zu AnythingLLM"""
         try:
-            response = requests.get(f"{self.base_url}/api/ping", headers=self.headers, timeout=5)
+            response = requests.get(f"{self.base_url}/api/ping", timeout=5)
             if response.status_code == 200:
                 result = response.json()
                 if result.get("online"):
                     print("✅ AnythingLLM-Verbindung erfolgreich getestet")
                     return True
-            print(f"❌ AnythingLLM-Test fehlgeschlagen: {response.status_code}")
             return False
         except Exception as e:
             print(f"❌ AnythingLLM-Verbindungstest fehlgeschlagen: {e}")
             return False
 
     def send_machine_error(self, machine: str, code: str, description: str) -> Optional[dict]:
-        """Sendet Maschinenfehler an AnythingLLM Workspace"""
+        """Sendet Maschinenfehler über Embed-Widget-Chat"""
         timestamp = datetime.now().isoformat()
-        text = f"Maschine {machine}: Fehler {code} – {description} (Zeit: {timestamp})"
+        message = f"[Maschinenfehler] Maschine {machine}: Fehler {code} – {description} (Zeitstempel: {timestamp})"
         
-        # Verschiedene Upload-Methoden probieren
-        upload_methods = [
-            {
-                "endpoint": f"/api/v1/workspace/{self.workspace_slug}/upload",
-                "payload": {
-                    "content": text,
-                    "metadata": {
-                        "source": "OPC UA",
-                        "machine": machine,
-                        "error_code": code,
-                        "timestamp": timestamp
-                    }
-                }
-            },
-            {
-                "endpoint": f"/api/v1/workspace/{self.workspace_slug}/documents",
-                "payload": {
-                    "text": text,
-                    "source": "OPC UA"
-                }
-            },
-            {
-                "endpoint": f"/api/v1/workspace/{self.workspace_slug}/document/upload",
-                "payload": {
-                    "content": text,
-                    "name": f"Fehler_{machine}_{code}_{timestamp[:10]}",
-                    "metadata": {
-                        "machine": machine,
-                        "error_code": code
-                    }
-                }
-            }
+        # Verschiedene Embed-Chat-Endpoints probieren
+        chat_endpoints = [
+            f"/api/v1/embed/{self.embed_id}/chat",
+            f"/api/v1/embed/{self.embed_uuid}/chat", 
+            f"/api/embed/{self.embed_id}/chat",
+            f"/embed/{self.embed_id}/chat"
         ]
         
-        for method in upload_methods:
+        for endpoint in chat_endpoints:
             try:
-                print(f"📤 Teste: {method['endpoint']}")
+                print(f"📤 Teste Embed-Chat: {endpoint}")
+                
+                # Ohne API-Key probieren (öffentliches Widget)
                 response = requests.post(
-                    f"{self.base_url}{method['endpoint']}",
-                    headers=self.headers,
-                    json=method['payload'],
+                    f"{self.base_url}{endpoint}",
+                    headers={"Content-Type": "application/json"},
+                    json={"message": message},
                     timeout=10
                 )
                 
@@ -83,20 +54,19 @@ class AnythingLLMClient:
                 print(f"   Response: {response.text[:200]}")
                 
                 if response.status_code in [200, 201]:
-                    print(f"✅ Erfolgreich: {method['endpoint']}")
+                    print(f"✅ Embed-Chat erfolgreich: {endpoint}")
                     try:
                         return response.json()
                     except:
-                        return {"success": True, "endpoint": method['endpoint']}
+                        return {"success": True, "endpoint": endpoint, "method": "embed_chat"}
                         
             except Exception as e:
                 print(f"   Fehler: {e}")
                 continue
         
-        print("❌ Alle Upload-Methoden fehlgeschlagen")
+        print("❌ Alle Embed-Chat-Methoden fehlgeschlagen")
         return None
 
-# Kompatibilitätsfunktion
 def send_to_anythingllm(machine, code, description):
     client = AnythingLLMClient()
     return client.send_machine_error(machine, code, description)
