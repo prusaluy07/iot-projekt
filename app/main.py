@@ -191,3 +191,23 @@ if __name__ == "__main__":
         port=8000,
         log_level="info"
     )
+# In main.py ergänzen:
+
+@app.get("/stored-errors")
+async def get_stored_errors():
+    """Gibt gespeicherte Fehler zurück"""
+    if not llm_client:
+        raise HTTPException(status_code=500, detail="Client nicht initialisiert")
+    
+    errors = llm_client.get_stored_errors()
+    return {"errors": errors, "count": len(errors)}
+
+@app.get("/anythingllm-import")
+async def get_anythingllm_import():
+    """Gibt Import-Text für AnythingLLM zurück"""
+    if not llm_client:
+        raise HTTPException(status_code=500, detail="Client nicht initialisiert")
+    
+    import_text = llm_client.get_import_text()
+    return {"import_text": import_text, "instructions": "Kopieren Sie diesen Text in AnythingLLM"}
+    
