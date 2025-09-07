@@ -26,3 +26,5 @@ pandas
 # Zusätzliche nützliche Pakete
 python-dotenv
 asyncio-mqtt
+
+curl
