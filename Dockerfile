@@ -12,6 +12,7 @@ COPY app/ .
 
 # Port freigeben
 EXPOSE 8000
+EXPOSE 8001
 
 # App starten
 CMD ["python", "main.py"]
