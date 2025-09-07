@@ -1,0 +1,28 @@
+# MQTT-Kommunikation (AnyViz, IoT)
+paho-mqtt
+
+# HTTP-Requests an AnythingLLM oder REST-APIs
+requests
+
+# Webserver & Streaming API
+fastapi
+uvicorn[standard]
+
+# SQLite-DB (Standard in Python enthalten, aber nützliches ORM)
+sqlalchemy
+
+# Datenvalidierung (z.B. für eingehende JSON-Daten)
+pydantic
+
+# Falls du auch mal direkt OPC UA nutzen willst (ohne AnyViz)
+opcua
+
+# Asynchrone Kommunikation, hilfreich mit FastAPI
+aiohttp
+
+# Für Tabellen/CSV-Auswertung (optional)
+pandas
+
+# Zusätzliche nützliche Pakete
+python-dotenv
+asyncio-mqtt
