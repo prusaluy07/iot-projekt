@@ -4,13 +4,22 @@ services:
   python-iot-app:
     build: .
     container_name: python-iot-container
-    network_mode: "host"  # ← Host-Netzwerk verwenden
+    ports:
+      - "8001:8000"  # Port 8001 extern verfügbar
     environment:
-      - ANYTHINGLLM_URL=http://localhost:3001  # ← localhost statt host.docker.internal
+      - ANYTHINGLLM_URL=http://172.18.0.2:3001  # AnythingLLM Container-IP
       - ANYTHINGLLM_API_KEY=KE7053N-30JM5PZ-KAPMXDP-KXJQC3N
-      - MQTT_BROKER=localhost  # ← localhost funktioniert jetzt
+      - MQTT_BROKER=localhost
       - PYTHONUNBUFFERED=1
+      - ENABLE_MQTT=false
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
     restart: unless-stopped
+    networks:
+      - default
+
+networks:
+  default:
+    external: true
+    name: bridge
