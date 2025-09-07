@@ -209,5 +209,56 @@ async def get_anythingllm_import():
         raise HTTPException(status_code=500, detail="Client nicht initialisiert")
     
     import_text = llm_client.get_import_text()
+
+
+# Diese Endpoints zur main.py hinzufügen:
+
+@app.get("/stored-errors")
+async def get_stored_errors():
+    """Gibt gespeicherte Fehler zurück"""
+    if not llm_client:
+        raise HTTPException(status_code=500, detail="Client nicht initialisiert")
+    
+    errors = llm_client.get_stored_errors()
+    return {"errors": errors, "count": len(errors)}
+
+@app.get("/anythingllm-import")
+async def get_anythingllm_import():
+    """Gibt Import-Text für AnythingLLM zurück"""
+    if not llm_client:
+        raise HTTPException(status_code=500, detail="Client nicht initialisiert")
+    
+    import_text = llm_client.get_import_text()
+    return {
+        "import_text": import_text, 
+        "instructions": "Kopieren Sie diesen Text in AnythingLLM Web-Interface",
+        "anythingllm_url": "http://192.168.178.83:3001"
+    }
+
+@app.get("/data-files")
+async def list_data_files():
+    """Listet alle Datendateien auf"""
+    try:
+        data_dir = "/app/data"
+        if not os.path.exists(data_dir):
+            return {"files": [], "message": "Keine Daten vorhanden"}
+        
+        files = []
+        for filename in os.listdir(data_dir):
+            filepath = os.path.join(data_dir, filename)
+            if os.path.isfile(filepath):
+                stat = os.stat(filepath)
+                files.append({
+                    "name": filename,
+                    "size": stat.st_size,
+                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                })
+        
+        return {"files": files, "count": len(files)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+    
     return {"import_text": import_text, "instructions": "Kopieren Sie diesen Text in AnythingLLM"}
     
