@@ -4,24 +4,13 @@ services:
   python-iot-app:
     build: .
     container_name: python-iot-container
-    ports:
-      - "8001:8000"
+    network_mode: "host"  # ← Host-Netzwerk verwenden
     environment:
-      - ANYTHINGLLM_URL=http://host.docker.internal:3001
+      - ANYTHINGLLM_URL=http://localhost:3001  # ← localhost statt host.docker.internal
       - ANYTHINGLLM_API_KEY=KE7053N-30JM5PZ-KAPMXDP-KXJQC3N
-      - MQTT_BROKER=localhost
+      - MQTT_BROKER=localhost  # ← localhost funktioniert jetzt
       - PYTHONUNBUFFERED=1
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
     restart: unless-stopped
-    networks:
-      - iot-network
-
-networks:
-  iot-network:
-    driver: bridge
-
-volumes:
-  data:
-  logs:
