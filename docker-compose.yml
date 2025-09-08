@@ -11,7 +11,7 @@ services:
       - AUTO_GENERATOR_INITIAL_DELAY=15        # Wartezeit vor erstem Auto-Fehler (Sekunden)  
       - AUTO_GENERATOR_INTERVAL=60             # Intervall zwischen Auto-Fehlern (Sekunden)
       - ENABLE_AUTO_GENERATOR=true             # Auto-Generator aktivieren
-      - ANYTHINGLLM_URL=http://172.18.0.1:3001  # ← Gateway des anythingllm-Netzwerks
+      - ANYTHINGLLM_URL=http://172.20.0.3:3001  # ← Gateway des anythingllm-Netzwerks
       - ANYTHINGLLM_API_KEY=KE7053N-30JM5PZ-KAPMXDP-KXJQC3N
       - MQTT_BROKER=localhost
       - PYTHONUNBUFFERED=1
