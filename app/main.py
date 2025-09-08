@@ -353,3 +353,38 @@ if __name__ == "__main__":
     log_with_timestamp(f"   AUTO_GENERATOR_INTERVAL: {os.getenv('AUTO_GENERATOR_INTERVAL', '60')} Sekunden")
     
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+
+# Neuer API-Endpoint für Workspace-Info
+@app.get("/anythingllm/workspaces")
+async def get_anythingllm_workspaces():
+    """Gibt alle verfügbaren AnythingLLM Workspaces zurück"""
+    if not llm_client:
+        raise HTTPException(status_code=500, detail="AnythingLLM Client nicht initialisiert")
+    
+    try:
+        workspaces_data = llm_client.get_workspaces()
+        workspaces = workspaces_data.get("workspaces", [])
+        
+        result = {
+            "total_workspaces": len(workspaces),
+            "active_workspace": llm_client.workspace_slug,
+            "workspaces": []
+        }
+        
+        for ws in workspaces:
+            result["workspaces"].append({
+                "id": ws.get("id"),
+                "name": ws.get("name"),
+                "slug": ws.get("slug"),
+                "created": ws.get("createdAt"),
+                "is_active": ws.get("slug") == llm_client.workspace_slug,
+                "api_url": f"{llm_client.base_url}/api/v1/workspace/{ws.get('slug')}/chat"
+            })
+        
+        return result
+        
+    except Exception as e:
+        logger.exception("Fehler beim Abrufen der Workspaces: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
