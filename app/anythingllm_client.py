@@ -3,16 +3,19 @@ import os
 import json
 import time
 import logging
-from typing import Optional
+import sys
+from typing import Optional, Dict, Any
 from datetime import datetime
 
 logger = logging.getLogger("iot-bridge.anythingllm")
 
 class AnythingLLMClient:
+    """Client für AnythingLLM API-Integration mit Retry-Mechanismus und Fallback"""
+    
     def __init__(self):
         self.base_url = os.getenv("ANYTHINGLLM_URL", "http://localhost:3001")
         self.api_key = os.getenv("ANYTHINGLLM_API_KEY", "DEIN_API_KEY")
-        self.workspace_slug = "wago-edge-copilot"
+        self.workspace_slug = os.getenv("ANYTHINGLLM_WORKSPACE", "wago-edge-copilot")
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -22,12 +25,16 @@ class AnythingLLMClient:
         
         logger.info("AnythingLLM Client initialisiert: %s", self.base_url)
         logger.info("Konfigurierter Workspace: %s", self.workspace_slug)
+        logger.info("Timeout: %ds, Retries: %d", self.timeout, self.max_retries)
 
-    def get_workspaces(self) -> dict:
+    def get_workspaces(self) -> Dict[str, Any]:
         """Ruft alle verfügbaren Workspaces ab"""
         try:
-            response = requests.get(f"{self.base_url}/api/v1/workspaces", 
-                                  headers=self.headers, timeout=10)
+            response = requests.get(
+                f"{self.base_url}/api/v1/workspaces", 
+                headers=self.headers, 
+                timeout=10
+            )
             if response.status_code == 200:
                 return response.json()
             else:
@@ -65,7 +72,6 @@ class AnythingLLMClient:
             # Datum formatieren
             if created_at:
                 try:
-                    from datetime import datetime
                     dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
                     created_str = dt.strftime("%Y-%m-%d %H:%M")
                 except:
@@ -91,9 +97,11 @@ class AnythingLLMClient:
         configured_exists = any(ws.get("slug") == self.workspace_slug for ws in workspaces)
         if not configured_exists:
             logger.error("WARNUNG: Konfigurierter Workspace '%s' nicht gefunden!", self.workspace_slug)
-            logger.error("Verfügbare Slugs: %s", [ws.get("slug") for ws in workspaces])
+            available_slugs = [ws.get("slug") for ws in workspaces]
+            logger.error("Verfügbare Slugs: %s", available_slugs)
 
     def test_connection(self) -> bool:
+        """Testet die Verbindung zu AnythingLLM"""
         try:
             response = requests.get(f"{self.base_url}/api/ping", timeout=5)
             if response.status_code == 200:
@@ -104,13 +112,14 @@ class AnythingLLMClient:
                     # Nach erfolgreichem Ping Workspaces laden
                     self.log_available_workspaces()
                     return True
+            logger.warning("AnythingLLM-Ping fehlgeschlagen: Status %d", response.status_code)
             return False
         except Exception as e:
             logger.exception("AnythingLLM-Verbindungstest fehlgeschlagen: %s", e)
             return False
 
-    # ... rest der bestehenden Methoden bleibt unverändert
-    def send_machine_error(self, machine: str, code: str, description: str) -> Optional[dict]:
+    def send_machine_error(self, machine: str, code: str, description: str) -> Optional[Dict[str, Any]]:
+        """Sendet Maschinenfehler an AnythingLLM mit Retry-Mechanismus"""
         timestamp = datetime.now().isoformat()
         message = f"[Maschinenfehler] Maschine {machine}: Fehler {code} – {description} (Zeit: {timestamp})"
         
@@ -118,11 +127,12 @@ class AnythingLLMClient:
         chat_url = f"{self.base_url}/api/v1/workspace/{self.workspace_slug}/chat"
         payload = {"message": message}
         
+        logger.debug("Starte API-Übertragung: %s/%s", machine, code)
+        
         # Retry-Mechanismus
         for attempt in range(self.max_retries):
             try:
-                logger.debug("Sende an AnythingLLM (Versuch %d/%d): %s", 
-                           attempt + 1, self.max_retries, chat_url)
+                logger.debug("Sende an AnythingLLM (Versuch %d/%d)", attempt + 1, self.max_retries)
                 
                 response = requests.post(
                     chat_url,
@@ -136,52 +146,53 @@ class AnythingLLMClient:
                 if response.status_code == 200:
                     try:
                         result = response.json()
-                        logger.info("AnythingLLM API erfolgreich: %s/%s", machine, code)
+                        logger.info("AnythingLLM API erfolgreich (Versuch %d): %s/%s", 
+                                  attempt + 1, machine, code)
                         
+                        # ERFOLG: Sofort return - keine weiteren Versuche!
                         return {
                             "success": True,
                             "api_response": True,
                             "anythingllm_response": result.get('textResponse', ''),
                             "sources": result.get('sources', []),
                             "response_id": result.get('id'),
-                            "attempt": attempt + 1
+                            "attempt": attempt + 1,
+                            "method": "api"
                         }
+                        
                     except json.JSONDecodeError as e:
                         logger.error("Invalid JSON response (Versuch %d): %s", attempt + 1, e)
-                        if attempt < self.max_retries - 1:
-                            time.sleep(2)
-                            continue
+                        logger.debug("Raw response: %s", response.text[:500])
+                        
                 else:
                     logger.warning("HTTP Error %d (Versuch %d): %s", 
                                  response.status_code, attempt + 1, response.text[:200])
-                    if attempt < self.max_retries - 1:
-                        time.sleep(2)
-                        continue
-                        
+                             
             except requests.exceptions.Timeout:
                 logger.warning("Timeout bei Versuch %d/%d (nach %ds)", 
                              attempt + 1, self.max_retries, self.timeout)
-                if attempt < self.max_retries - 1:
-                    time.sleep(5)  # Längere Pause bei Timeout
-                else:
-                    logger.error("Alle Timeout-Versuche fehlgeschlagen")
-                    
+                             
             except requests.exceptions.ConnectionError as e:
                 logger.error("Verbindungsfehler bei Versuch %d: %s", attempt + 1, e)
-                if attempt < self.max_retries - 1:
-                    time.sleep(3)
-                else:
-                    break
-                    
+                
             except Exception as e:
                 logger.exception("API-Fehler bei Versuch %d: %s", attempt + 1, e)
+                # Bei unerwarteten Fehlern: Retry-Schleife verlassen
                 break
+            
+            # Wartezeit zwischen Versuchen (nur wenn nicht letzter Versuch)
+            if attempt < self.max_retries - 1:
+                # Längere Wartezeit bei Timeout
+                wait_time = 5 if 'Timeout' in str(sys.exc_info()[1]) else 2
+                logger.debug("Warte %ds vor nächstem Versuch...", wait_time)
+                time.sleep(wait_time)
         
-        # Fallback zu lokaler Speicherung
-        logger.info("API-Upload fehlgeschlagen - verwende lokale Speicherung")
+        # Nur hier ankommen wenn ALLE Versuche fehlgeschlagen sind
+        logger.warning("Alle %d API-Versuche fehlgeschlagen - verwende lokale Speicherung", 
+                       self.max_retries)
         return self._store_locally(machine, code, description)
 
-    def _store_locally(self, machine: str, code: str, description: str) -> dict:
+    def _store_locally(self, machine: str, code: str, description: str) -> Dict[str, Any]:
         """Speichert Maschinenfehler lokal als Fallback"""
         timestamp = datetime.now().isoformat()
         formatted_text = f"Maschine {machine}: Fehler {code} – {description} (Zeit: {timestamp})"
@@ -199,39 +210,45 @@ class AnythingLLMClient:
             os.makedirs("/app/data", exist_ok=True)
             date_str = datetime.now().strftime('%Y%m%d')
             
-            # JSON-Datei
+            # JSON-Datei für strukturierte Daten
             json_filename = f"/app/data/machine_errors_{date_str}.json"
             if os.path.exists(json_filename):
-                with open(json_filename, 'r') as f:
+                with open(json_filename, 'r', encoding='utf-8') as f:
                     errors = json.load(f)
             else:
                 errors = []
             
             errors.append(error_data)
             
-            with open(json_filename, 'w') as f:
+            with open(json_filename, 'w', encoding='utf-8') as f:
                 json.dump(errors, f, indent=2, ensure_ascii=False)
             
-            # Import-Text
+            # Import-Text für AnythingLLM
             import_filename = f"/app/data/anythingllm_import_{date_str}.txt"
             with open(import_filename, 'a', encoding='utf-8') as f:
                 f.write(f"\n{error_data['anythingllm_import_text']}\n")
             
             logger.info("Maschinenfehler lokal gespeichert: %s/%s", machine, code)
+            logger.debug("JSON: %s, Import: %s", json_filename, import_filename)
             
             return {
                 "success": True,
                 "local_storage": True,
                 "api_response": False,
                 "json_file": json_filename,
-                "import_file": import_filename
+                "import_file": import_filename,
+                "method": "local_storage"
             }
             
         except Exception as e:
             logger.exception("Lokale Speicherung fehlgeschlagen: %s", e)
-            return {"success": False, "error": str(e)}
+            return {
+                "success": False,
+                "error": str(e),
+                "method": "failed"
+            }
 
-    def send_chat_message(self, message: str, conversation_id: str = None) -> Optional[dict]:
+    def send_chat_message(self, message: str, conversation_id: str = None) -> Optional[Dict[str, Any]]:
         """Sendet eine Chat-Nachricht an AnythingLLM"""
         chat_url = f"{self.base_url}/api/v1/workspace/{self.workspace_slug}/chat"
         
@@ -240,10 +257,22 @@ class AnythingLLMClient:
             payload["conversationId"] = conversation_id
         
         try:
-            response = requests.post(chat_url, headers=self.headers, json=payload, timeout=self.timeout)
+            logger.debug("Sende Chat-Nachricht: %s", message[:100])
+            response = requests.post(
+                chat_url, 
+                headers=self.headers, 
+                json=payload, 
+                timeout=self.timeout
+            )
+            
             if response.status_code == 200:
-                return response.json()
-            return None
+                result = response.json()
+                logger.info("Chat-Nachricht erfolgreich gesendet")
+                return result
+            else:
+                logger.warning("Chat-Nachricht fehlgeschlagen: HTTP %d", response.status_code)
+                return None
+                
         except Exception as e:
             logger.exception("Chat-Fehler: %s", e)
             return None
@@ -257,7 +286,7 @@ class AnythingLLMClient:
         
         try:
             if os.path.exists(filename):
-                with open(filename, 'r') as f:
+                with open(filename, 'r', encoding='utf-8') as f:
                     return json.load(f)
             return []
         except Exception as e:
@@ -277,9 +306,133 @@ class AnythingLLMClient:
                     return f.read()
             return "Keine Daten für dieses Datum gefunden."
         except Exception as e:
+            logger.exception("Fehler beim Laden des Import-Texts: %s", e)
             return f"Fehler beim Laden: {e}"
 
-def send_to_anythingllm(machine, code, description):
-    """Kompatibilitätsfunktion"""
+    def get_statistics(self) -> Dict[str, Any]:
+        """Gibt Statistiken über gespeicherte Fehler zurück"""
+        date_str = datetime.now().strftime('%Y%m%d')
+        errors = self.get_stored_errors(date_str)
+        
+        if not errors:
+            return {"total": 0, "machines": {}, "codes": {}, "date": date_str}
+        
+        machines = {}
+        codes = {}
+        
+        for error in errors:
+            machine = error.get("machine", "Unknown")
+            code = error.get("code", "Unknown")
+            
+            machines[machine] = machines.get(machine, 0) + 1
+            codes[code] = codes.get(code, 0) + 1
+        
+        return {
+            "total": len(errors),
+            "machines": machines,
+            "codes": codes,
+            "date": date_str,
+            "latest_error": errors[-1] if errors else None
+        }
+
+    def health_check(self) -> Dict[str, Any]:
+        """Vollständiger Gesundheitscheck"""
+        health = {
+            "anythingllm_ping": False,
+            "workspace_exists": False,
+            "api_key_valid": False,
+            "local_storage": False,
+            "config": {
+                "base_url": self.base_url,
+                "workspace_slug": self.workspace_slug,
+                "timeout": self.timeout,
+                "retries": self.max_retries
+            }
+        }
+        
+        # Ping-Test
+        try:
+            response = requests.get(f"{self.base_url}/api/ping", timeout=5)
+            health["anythingllm_ping"] = response.status_code == 200 and response.json().get("online", False)
+        except:
+            pass
+        
+        # Workspace-Test
+        if health["anythingllm_ping"]:
+            workspaces_data = self.get_workspaces()
+            workspaces = workspaces_data.get("workspaces", [])
+            health["workspace_exists"] = any(ws.get("slug") == self.workspace_slug for ws in workspaces)
+            health["api_key_valid"] = len(workspaces) > 0  # Wenn wir Workspaces bekommen, ist der Key gültig
+        
+        # Lokale Speicherung testen
+        try:
+            os.makedirs("/app/data", exist_ok=True)
+            test_file = "/app/data/health_check.tmp"
+            with open(test_file, 'w') as f:
+                f.write("test")
+            os.remove(test_file)
+            health["local_storage"] = True
+        except:
+            pass
+        
+        return health
+
+
+def send_to_anythingllm(machine: str, code: str, description: str) -> Optional[Dict[str, Any]]:
+    """Kompatibilitätsfunktion für einfache Nutzung"""
     client = AnythingLLMClient()
     return client.send_machine_error(machine, code, description)
+
+
+def show_stored_errors():
+    """Hilfsfunktion: Zeigt alle gespeicherten Fehler des heutigen Tages"""
+    client = AnythingLLMClient()
+    errors = client.get_stored_errors()
+    
+    if not errors:
+        print("Keine gespeicherten Fehler für heute gefunden.")
+        return
+    
+    print(f"Gespeicherte Fehler heute ({len(errors)} Stück):")
+    print("-" * 60)
+    
+    for error in errors:
+        timestamp = error.get('timestamp', 'Unknown')
+        machine = error.get('machine', 'Unknown')
+        code = error.get('code', 'Unknown')
+        description = error.get('description', 'No description')
+        
+        print(f"{timestamp}: {machine}/{code} - {description}")
+
+
+def get_anythingllm_import_text() -> str:
+    """Hilfsfunktion: Gibt den Import-Text für AnythingLLM zurück"""
+    client = AnythingLLMClient()
+    return client.get_import_text()
+
+
+if __name__ == "__main__":
+    # Test-Skript
+    print("AnythingLLM Client Test")
+    print("=" * 40)
+    
+    client = AnythingLLMClient()
+    
+    # Verbindungstest
+    if client.test_connection():
+        print("✅ Verbindung erfolgreich")
+        
+        # Health Check
+        health = client.health_check()
+        print(f"Health Check: {health}")
+        
+        # Test-Nachricht senden
+        result = client.send_machine_error("TestMaschine", "E999", "Client-Test")
+        print(f"Test-Ergebnis: {result}")
+        
+        # Statistiken
+        stats = client.get_statistics()
+        print(f"Statistiken: {stats}")
+        
+    else:
+        print("❌ Verbindung fehlgeschlagen")
