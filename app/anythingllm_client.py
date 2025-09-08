@@ -18,7 +18,7 @@ class AnythingLLMClient:
 
     def test_connection(self) -> bool:
         try:
-            response = requests.get(f"{self.base_url}/api/ping", timeout=5)
+            response = requests.get(f"{self.base_url}/api/ping", timeout=15)
             if response.status_code == 200:
                 result = response.json()
                 if result.get("online"):
@@ -46,7 +46,7 @@ class AnythingLLMClient:
                 chat_url,
                 headers=self.headers,
                 json=payload,
-                timeout=15
+                timeout=120
             )
             
             print(f"Status: {response.status_code}")
@@ -85,7 +85,7 @@ class AnythingLLMClient:
             payload["conversationId"] = conversation_id
         
         try:
-            response = requests.post(chat_url, headers=self.headers, json=payload, timeout=15)
+            response = requests.post(chat_url, headers=self.headers, json=payload, timeout=60)
             if response.status_code == 200:
                 return response.json()
             return None
