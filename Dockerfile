@@ -6,23 +6,24 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Arbeitsverzeichnis setzen
+# Arbeitsverzeichnisse setzen
 WORKDIR /app
 
-# Requirements kopieren (falls im Repo vorhanden) und installieren
+# Requirements kopieren (falls lokal vorhanden)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt || true
 
-# Optional: Ports freigeben
+# Ports freigeben
 EXPOSE 8000
 EXPOSE 8001
 
-# Bei Containerstart: Repo ziehen/aktualisieren und App starten
+# Startkommando: Repo aktualisieren und App starten
 ENTRYPOINT ["/bin/sh", "-c", "\
-  if [ ! -d /app/.git ]; then \
-    git clone --depth=1 https://github.com/prusaluy07/iot-projekt.git /app; \
+  if [ ! -d /src/.git ]; then \
+    git clone --depth=1 https://github.com/prusaluy07/iot-projekt.git /src; \
   else \
-    cd /app && git pull; \
+    cd /src && git pull; \
   fi && \
-  python main.py \
+  cp -r /src/* /app/ && \
+  python /app/main.py \
 "]
