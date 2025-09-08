@@ -2,8 +2,9 @@ version: '3.9'
 
 services:
   python-iot-app:
-    build: .
+    build: 
     container_name: python-iot-container
+    context: https://github.com/prusaluy07/iot-projekt.git#main
     ports:
       - "8001:8000"
     environment:
