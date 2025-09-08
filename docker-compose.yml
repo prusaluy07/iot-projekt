@@ -7,6 +7,8 @@ services:
     ports:
       - "8001:8000"
     environment:
+      - ANYTHINGLLM_TIMEOUT=20      # Timeout pro Versuch (Sekunden)
+      - ANYTHINGLLM_RETRIES=20       # Anzahl Wiederholungsversuche
       - STARTUP_DELAY=15                        # Wartezeit vor System-Start (Sekunden)
       - AUTO_GENERATOR_INITIAL_DELAY=15        # Wartezeit vor erstem Auto-Fehler (Sekunden)  
       - AUTO_GENERATOR_INTERVAL=60             # Intervall zwischen Auto-Fehlern (Sekunden)
