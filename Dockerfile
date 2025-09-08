@@ -25,5 +25,6 @@ ENTRYPOINT ["/bin/sh", "-c", "\
     cd /src && git pull; \
   fi && \
   cp -r /src/* /app/ && \
-  python /app/main.py \
+  python /app/app/main.py \
 "]
+
