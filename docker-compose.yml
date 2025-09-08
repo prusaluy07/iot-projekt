@@ -19,7 +19,6 @@ services:
       - PYTHONUNBUFFERED=1
       - ENABLE_MQTT=false
     volumes:
-      - ./app:/app
       - ./data:/app/data
       - ./logs:/app/logs
     restart: unless-stopped
