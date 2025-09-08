@@ -21,7 +21,77 @@ class AnythingLLMClient:
         self.max_retries = int(os.getenv("ANYTHINGLLM_RETRIES", "3"))
         
         logger.info("AnythingLLM Client initialisiert: %s", self.base_url)
-        logger.info("Workspace: %s", self.workspace_slug)
+        logger.info("Konfigurierter Workspace: %s", self.workspace_slug)
+
+    def get_workspaces(self) -> dict:
+        """Ruft alle verfügbaren Workspaces ab"""
+        try:
+            response = requests.get(f"{self.base_url}/api/v1/workspaces", 
+                                  headers=self.headers, timeout=10)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.warning("Workspaces abrufen fehlgeschlagen: HTTP %d", response.status_code)
+                return {}
+        except Exception as e:
+            logger.exception("Fehler beim Abrufen der Workspaces: %s", e)
+            return {}
+
+    def log_available_workspaces(self):
+        """Loggt alle verfügbaren Workspaces beim Startup"""
+        logger.info("Lade verfügbare AnythingLLM Workspaces...")
+        
+        workspaces_data = self.get_workspaces()
+        
+        if not workspaces_data:
+            logger.warning("Keine Workspaces gefunden oder API nicht erreichbar")
+            return
+        
+        workspaces = workspaces_data.get("workspaces", [])
+        
+        if not workspaces:
+            logger.warning("Workspace-Liste ist leer")
+            return
+        
+        logger.info("Verfügbare Workspaces (%d gefunden):", len(workspaces))
+        logger.info("-" * 60)
+        
+        for workspace in workspaces:
+            workspace_id = workspace.get("id")
+            workspace_name = workspace.get("name", "Unbekannt")
+            workspace_slug = workspace.get("slug", "unbekannt")
+            created_at = workspace.get("createdAt", "")
+            
+            # Datum formatieren
+            if created_at:
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    created_str = dt.strftime("%Y-%m-%d %H:%M")
+                except:
+                    created_str = created_at[:10]
+            else:
+                created_str = "Unbekannt"
+            
+            # Workspace-Status
+            status_icon = "✅" if workspace_slug == self.workspace_slug else "⚪"
+            
+            logger.info("%s ID: %s | Name: %s", status_icon, workspace_id, workspace_name)
+            logger.info("    Slug: %s | Erstellt: %s", workspace_slug, created_str)
+            
+            # API-URL für diesen Workspace
+            api_url = f"{self.base_url}/api/v1/workspace/{workspace_slug}/chat"
+            logger.info("    API: %s", api_url)
+            logger.info("")
+        
+        logger.info("-" * 60)
+        logger.info("Aktiver Workspace: %s", self.workspace_slug)
+        
+        # Prüfen ob der konfigurierte Workspace existiert
+        configured_exists = any(ws.get("slug") == self.workspace_slug for ws in workspaces)
+        if not configured_exists:
+            logger.error("WARNUNG: Konfigurierter Workspace '%s' nicht gefunden!", self.workspace_slug)
+            logger.error("Verfügbare Slugs: %s", [ws.get("slug") for ws in workspaces])
 
     def test_connection(self) -> bool:
         try:
@@ -29,13 +99,17 @@ class AnythingLLMClient:
             if response.status_code == 200:
                 result = response.json()
                 if result.get("online"):
-                    logger.info("AnythingLLM-Verbindung erfolgreich getestet")
+                    logger.info("AnythingLLM-Ping erfolgreich")
+                    
+                    # Nach erfolgreichem Ping Workspaces laden
+                    self.log_available_workspaces()
                     return True
             return False
         except Exception as e:
             logger.exception("AnythingLLM-Verbindungstest fehlgeschlagen: %s", e)
             return False
 
+    # ... rest der bestehenden Methoden bleibt unverändert
     def send_machine_error(self, machine: str, code: str, description: str) -> Optional[dict]:
         timestamp = datetime.now().isoformat()
         message = f"[Maschinenfehler] Maschine {machine}: Fehler {code} – {description} (Zeit: {timestamp})"
