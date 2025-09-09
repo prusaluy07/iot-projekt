@@ -1,3 +1,4 @@
+#20250909 101430
 import requests
 import os
 import json
@@ -8,6 +9,26 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 
 logger = logging.getLogger("iot-bridge.anythingllm")
+
+def log_and_print(level: str, message: str, *args):
+    """Hilfsfunktion: Loggt UND gibt per print aus"""
+    formatted_message = message % args if args else message
+    
+    # Print-Ausgabe
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] [{level}] {formatted_message}")
+    
+    # Logger-Ausgabe
+    if level == "INFO":
+        logger.info(message, *args)
+    elif level == "WARNING":
+        logger.warning(message, *args)
+    elif level == "ERROR":
+        logger.error(message, *args)
+    elif level == "DEBUG":
+        logger.debug(message, *args)
+    elif level == "EXCEPTION":
+        logger.exception(message, *args)
 
 class AnythingLLMClient:
     """Client für AnythingLLM API-Integration mit Retry-Mechanismus und Fallback"""
@@ -23,9 +44,9 @@ class AnythingLLMClient:
         self.timeout = int(os.getenv("ANYTHINGLLM_TIMEOUT", "30"))
         self.max_retries = int(os.getenv("ANYTHINGLLM_RETRIES", "3"))
         
-        logger.info("AnythingLLM Client initialisiert: %s", self.base_url)
-        logger.info("Konfigurierter Workspace: %s", self.workspace_slug)
-        logger.info("Timeout: %ds, Retries: %d", self.timeout, self.max_retries)
+        log_and_print("INFO", "AnythingLLM Client initialisiert: %s", self.base_url)
+        log_and_print("INFO", "Konfigurierter Workspace: %s", self.workspace_slug)
+        log_and_print("INFO", "Timeout: %ds, Retries: %d", self.timeout, self.max_retries)
 
     def get_workspaces(self) -> Dict[str, Any]:
         """Ruft alle verfügbaren Workspaces ab"""
@@ -38,29 +59,30 @@ class AnythingLLMClient:
             if response.status_code == 200:
                 return response.json()
             else:
-                logger.warning("Workspaces abrufen fehlgeschlagen: HTTP %d", response.status_code)
+                log_and_print("WARNING", "Workspaces abrufen fehlgeschlagen: HTTP %d", response.status_code)
                 return {}
         except Exception as e:
-            logger.exception("Fehler beim Abrufen der Workspaces: %s", e)
+            log_and_print("EXCEPTION", "Fehler beim Abrufen der Workspaces: %s", e)
             return {}
 
     def log_available_workspaces(self):
         """Loggt alle verfügbaren Workspaces beim Startup"""
-        logger.info("Lade verfügbare AnythingLLM Workspaces...")
+        log_and_print("INFO", "Lade verfügbare AnythingLLM Workspaces...")
         
         workspaces_data = self.get_workspaces()
         
         if not workspaces_data:
-            logger.warning("Keine Workspaces gefunden oder API nicht erreichbar")
+            log_and_print("WARNING", "Keine Workspaces gefunden oder API nicht erreichbar")
             return
         
         workspaces = workspaces_data.get("workspaces", [])
         
         if not workspaces:
-            logger.warning("Workspace-Liste ist leer")
+            log_and_print("WARNING", "Workspace-Liste ist leer")
             return
         
-        logger.info("Verfügbare Workspaces (%d gefunden):", len(workspaces))
+        log_and_print("INFO", "Verfügbare Workspaces (%d gefunden):", len(workspaces))
+        print("-" * 60)
         logger.info("-" * 60)
         
         for workspace in workspaces:
@@ -82,23 +104,25 @@ class AnythingLLMClient:
             # Workspace-Status
             status_icon = "✅" if workspace_slug == self.workspace_slug else "⚪"
             
-            logger.info("%s ID: %s | Name: %s", status_icon, workspace_id, workspace_name)
-            logger.info("    Slug: %s | Erstellt: %s", workspace_slug, created_str)
+            log_and_print("INFO", "%s ID: %s | Name: %s", status_icon, workspace_id, workspace_name)
+            log_and_print("INFO", "    Slug: %s | Erstellt: %s", workspace_slug, created_str)
             
             # API-URL für diesen Workspace
             api_url = f"{self.base_url}/api/v1/workspace/{workspace_slug}/chat"
-            logger.info("    API: %s", api_url)
+            log_and_print("INFO", "    API: %s", api_url)
+            print("")
             logger.info("")
         
+        print("-" * 60)
         logger.info("-" * 60)
-        logger.info("Aktiver Workspace: %s", self.workspace_slug)
+        log_and_print("INFO", "Aktiver Workspace: %s", self.workspace_slug)
         
         # Prüfen ob der konfigurierte Workspace existiert
         configured_exists = any(ws.get("slug") == self.workspace_slug for ws in workspaces)
         if not configured_exists:
-            logger.error("WARNUNG: Konfigurierter Workspace '%s' nicht gefunden!", self.workspace_slug)
+            log_and_print("ERROR", "WARNUNG: Konfigurierter Workspace '%s' nicht gefunden!", self.workspace_slug)
             available_slugs = [ws.get("slug") for ws in workspaces]
-            logger.error("Verfügbare Slugs: %s", available_slugs)
+            log_and_print("ERROR", "Verfügbare Slugs: %s", available_slugs)
 
     def test_connection(self) -> bool:
         """Testet die Verbindung zu AnythingLLM"""
@@ -107,15 +131,15 @@ class AnythingLLMClient:
             if response.status_code == 200:
                 result = response.json()
                 if result.get("online"):
-                    logger.info("AnythingLLM-Ping erfolgreich")
+                    log_and_print("INFO", "AnythingLLM-Ping erfolgreich")
                     
                     # Nach erfolgreichem Ping Workspaces laden
                     self.log_available_workspaces()
                     return True
-            logger.warning("AnythingLLM-Ping fehlgeschlagen: Status %d", response.status_code)
+            log_and_print("WARNING", "AnythingLLM-Ping fehlgeschlagen: Status %d", response.status_code)
             return False
         except Exception as e:
-            logger.exception("AnythingLLM-Verbindungstest fehlgeschlagen: %s", e)
+            log_and_print("EXCEPTION", "AnythingLLM-Verbindungstest fehlgeschlagen: %s", e)
             return False
 
     def send_machine_error(self, machine: str, code: str, description: str) -> Optional[Dict[str, Any]]:
@@ -127,12 +151,12 @@ class AnythingLLMClient:
         chat_url = f"{self.base_url}/api/v1/workspace/{self.workspace_slug}/chat"
         payload = {"message": message}
         
-        logger.debug("Starte API-Übertragung: %s/%s", machine, code)
+        log_and_print("DEBUG", "Starte API-Übertragung: %s/%s", machine, code)
         
         # Retry-Mechanismus
         for attempt in range(self.max_retries):
             try:
-                logger.debug("Sende an AnythingLLM (Versuch %d/%d)", attempt + 1, self.max_retries)
+                log_and_print("DEBUG", "Sende an AnythingLLM (Versuch %d/%d)", attempt + 1, self.max_retries)
                 
                 response = requests.post(
                     chat_url,
@@ -141,13 +165,13 @@ class AnythingLLMClient:
                     timeout=self.timeout
                 )
                 
-                logger.debug("AnythingLLM Response Status: %d", response.status_code)
+                log_and_print("DEBUG", "AnythingLLM Response Status: %d", response.status_code)
                 
                 if response.status_code == 200:
                     try:
                         result = response.json()
-                        logger.info("AnythingLLM API erfolgreich (Versuch %d): %s/%s", 
-                                  attempt + 1, machine, code)
+                        log_and_print("INFO", "AnythingLLM API erfolgreich (Versuch %d): %s/%s", 
+                                      attempt + 1, machine, code)
                         
                         # ERFOLG: Sofort return - keine weiteren Versuche!
                         return {
@@ -161,22 +185,22 @@ class AnythingLLMClient:
                         }
                         
                     except json.JSONDecodeError as e:
-                        logger.error("Invalid JSON response (Versuch %d): %s", attempt + 1, e)
-                        logger.debug("Raw response: %s", response.text[:500])
+                        log_and_print("ERROR", "Invalid JSON response (Versuch %d): %s", attempt + 1, e)
+                        log_and_print("DEBUG", "Raw response: %s", response.text[:500])
                         
                 else:
-                    logger.warning("HTTP Error %d (Versuch %d): %s", 
+                    log_and_print("WARNING", "HTTP Error %d (Versuch %d): %s", 
                                  response.status_code, attempt + 1, response.text[:200])
                              
             except requests.exceptions.Timeout:
-                logger.warning("Timeout bei Versuch %d/%d (nach %ds)", 
+                log_and_print("WARNING", "Timeout bei Versuch %d/%d (nach %ds)", 
                              attempt + 1, self.max_retries, self.timeout)
                              
             except requests.exceptions.ConnectionError as e:
-                logger.error("Verbindungsfehler bei Versuch %d: %s", attempt + 1, e)
+                log_and_print("ERROR", "Verbindungsfehler bei Versuch %d: %s", attempt + 1, e)
                 
             except Exception as e:
-                logger.exception("API-Fehler bei Versuch %d: %s", attempt + 1, e)
+                log_and_print("EXCEPTION", "API-Fehler bei Versuch %d: %s", attempt + 1, e)
                 # Bei unerwarteten Fehlern: Retry-Schleife verlassen
                 break
             
@@ -184,12 +208,12 @@ class AnythingLLMClient:
             if attempt < self.max_retries - 1:
                 # Längere Wartezeit bei Timeout
                 wait_time = 5 if 'Timeout' in str(sys.exc_info()[1]) else 2
-                logger.debug("Warte %ds vor nächstem Versuch...", wait_time)
+                log_and_print("DEBUG", "Warte %ds vor nächstem Versuch...", wait_time)
                 time.sleep(wait_time)
         
         # Nur hier ankommen wenn ALLE Versuche fehlgeschlagen sind
-        logger.warning("Alle %d API-Versuche fehlgeschlagen - verwende lokale Speicherung", 
-                       self.max_retries)
+        log_and_print("WARNING", "Alle %d API-Versuche fehlgeschlagen - verwende lokale Speicherung", 
+                      self.max_retries)
         return self._store_locally(machine, code, description)
 
     def _store_locally(self, machine: str, code: str, description: str) -> Dict[str, Any]:
@@ -228,8 +252,8 @@ class AnythingLLMClient:
             with open(import_filename, 'a', encoding='utf-8') as f:
                 f.write(f"\n{error_data['anythingllm_import_text']}\n")
             
-            logger.info("Maschinenfehler lokal gespeichert: %s/%s", machine, code)
-            logger.debug("JSON: %s, Import: %s", json_filename, import_filename)
+            log_and_print("INFO", "Maschinenfehler lokal gespeichert: %s/%s", machine, code)
+            log_and_print("DEBUG", "JSON: %s, Import: %s", json_filename, import_filename)
             
             return {
                 "success": True,
@@ -241,7 +265,7 @@ class AnythingLLMClient:
             }
             
         except Exception as e:
-            logger.exception("Lokale Speicherung fehlgeschlagen: %s", e)
+            log_and_print("EXCEPTION", "Lokale Speicherung fehlgeschlagen: %s", e)
             return {
                 "success": False,
                 "error": str(e),
@@ -257,7 +281,7 @@ class AnythingLLMClient:
             payload["conversationId"] = conversation_id
         
         try:
-            logger.debug("Sende Chat-Nachricht: %s", message[:100])
+            log_and_print("DEBUG", "Sende Chat-Nachricht: %s", message[:100])
             response = requests.post(
                 chat_url, 
                 headers=self.headers, 
@@ -267,14 +291,14 @@ class AnythingLLMClient:
             
             if response.status_code == 200:
                 result = response.json()
-                logger.info("Chat-Nachricht erfolgreich gesendet")
+                log_and_print("INFO", "Chat-Nachricht erfolgreich gesendet")
                 return result
             else:
-                logger.warning("Chat-Nachricht fehlgeschlagen: HTTP %d", response.status_code)
+                log_and_print("WARNING", "Chat-Nachricht fehlgeschlagen: HTTP %d", response.status_code)
                 return None
                 
         except Exception as e:
-            logger.exception("Chat-Fehler: %s", e)
+            log_and_print("EXCEPTION", "Chat-Fehler: %s", e)
             return None
 
     def get_stored_errors(self, date: str = None) -> list:
@@ -290,7 +314,7 @@ class AnythingLLMClient:
                     return json.load(f)
             return []
         except Exception as e:
-            logger.exception("Fehler beim Laden der Daten: %s", e)
+            log_and_print("EXCEPTION", "Fehler beim Laden der Daten: %s", e)
             return []
 
     def get_import_text(self, date: str = None) -> str:
@@ -306,7 +330,7 @@ class AnythingLLMClient:
                     return f.read()
             return "Keine Daten für dieses Datum gefunden."
         except Exception as e:
-            logger.exception("Fehler beim Laden des Import-Texts: %s", e)
+            log_and_print("EXCEPTION", "Fehler beim Laden des Import-Texts: %s", e)
             return f"Fehler beim Laden: {e}"
 
     def get_statistics(self) -> Dict[str, Any]:
