@@ -13,17 +13,19 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
 import threading
+from icon_standards import get_icon, get_status_icon, format_status_message, ICONS
 
-APP_VERSION = "v20250909_1608_6"
-CLIENT_VERSION = "v20250909_2012_006"
+APP_VERSION = "app_v20250909_2210_007"
+CLIENT_VERSION = "app_clinet_v20250909_2210_007"
 
 def log_and_print(level: str, message: str, *args):
-    """Hilfsfunktion: Nur print-Ausgabe"""
+    """Hilfsfunktion: Print-Ausgabe mit Icon-Standards"""
     formatted_message = message % args if args else message
     
-    # Nur Print-Ausgabe
+    # Icon basierend auf Log-Level
+    level_icon = get_icon("log_level", level, ICONS["log_level"]["info"])
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] [{level}] {formatted_message}")
+    print(f"[{timestamp}] {level_icon} {formatted_message}")
 
 # Logging-Konfiguration
 def setup_logging():
@@ -114,42 +116,47 @@ def auto_error_generator():
     initial_delay = int(os.getenv("AUTO_GENERATOR_INITIAL_DELAY", "10"))
     interval = int(os.getenv("AUTO_GENERATOR_INTERVAL", "60"))
     
-    log_and_print("INFO", "Auto-Generator gestartet - warte %d Sekunden vor erstem Fehler", initial_delay)
+    log_and_print("INFO", f"{ICONS['system']['start']} Auto-Generator gestartet - warte %d Sekunden vor erstem Fehler", initial_delay)
     
     # Einmalige Wartezeit nach Start
     for i in range(initial_delay):
         if not auto_generator_enabled:
-            log_and_print("INFO", "Auto-Generator während Initialisierung gestoppt")
+            log_and_print("INFO", f"{ICONS['system']['stop']} Auto-Generator während Initialisierung gestoppt")
             return
         time.sleep(1)
     
-    log_and_print("INFO", "Auto-Generator initialisiert - beginne mit Fehlergeneration (alle %d Sekunden)", interval)
+    log_and_print("INFO", f"{ICONS['process']['running']} Auto-Generator initialisiert - beginne mit Fehlergeneration (alle %d Sekunden)", interval)
     
     error_count = 0
     while auto_generator_enabled:
         try:
             # Heartbeat-Log alle 10 Durchläufe
             if error_count % 10 == 0:
-                log_and_print("DEBUG", "Auto-Generator Heartbeat - Fehler generiert: %d", error_count)
+                heartbeat_icon = ICONS["system"]["heartbeat"]
+                log_and_print("DEBUG", f"{heartbeat_icon} Auto-Generator Heartbeat - Fehler generiert: %d", error_count)
             
             # Zufälligen Fehler generieren
             machine, code, description = generate_random_error()
             
-            log_and_print("INFO", "Generiere Auto-Fehler: %s/%s", machine, code)
-            log_and_print("DEBUG", "Auto-Fehler Details: %s - %s", code, description)
+            log_and_print("INFO", f"{ICONS['machine']['factory']} Generiere Auto-Fehler: %s/%s", machine, code)
+            log_and_print("DEBUG", f"{ICONS['machine']['error']} Auto-Fehler Details: %s - %s", code, description)
             
             if llm_client:
                 result = llm_client.send_machine_error(machine, code, description)
                 if result and result.get("success"):
                     if result.get("api_response"):
                         attempt = result.get("attempt", 1)
-                        log_and_print("INFO", "Auto-Fehler erfolgreich an AnythingLLM gesendet (Versuch %d)", attempt)
+                        success_icon = get_icon("process", "success")
+                        log_and_print("INFO", f"{success_icon} Auto-Fehler erfolgreich an AnythingLLM gesendet (Versuch %d)", attempt)
                     else:
-                        log_and_print("INFO", "Auto-Fehler lokal gespeichert (API nicht verfügbar)")
+                        storage_icon = get_icon("process", "warning")
+                        log_and_print("INFO", f"{storage_icon} Auto-Fehler lokal gespeichert (API nicht verfügbar)")
                 else:
-                    log_and_print("ERROR", "Auto-Fehler komplett fehlgeschlagen")
+                    error_icon = get_icon("process", "error")
+                    log_and_print("ERROR", f"{error_icon} Auto-Fehler komplett fehlgeschlagen")
             else:
-                log_and_print("ERROR", "LLM-Client nicht verfügbar")
+                offline_icon = get_status_icon("offline")
+                log_and_print("ERROR", f"{offline_icon} LLM-Client nicht verfügbar")
             
             error_count += 1
             
@@ -163,9 +170,11 @@ def auto_error_generator():
                 break
                 
         except Exception as e:
-            log_and_print("ERROR", "Auto-Generator Fehler: %s", e)
+            error_icon = get_icon("process", "error")
+            log_and_print("ERROR", f"{error_icon} Auto-Generator Fehler: %s", e)
     
-    log_and_print("INFO", "Auto-Generator gestoppt")
+    stop_icon = ICONS["system"]["stop"]
+    log_and_print("INFO", f"{stop_icon} Auto-Generator gestoppt")
 
 def restart_auto_generator():
     """Startet Auto-Generator neu (hilfreich bei Problemen)"""
@@ -174,32 +183,35 @@ def restart_auto_generator():
     # Alten Thread stoppen
     auto_generator_enabled = False
     if generator_thread and generator_thread.is_alive():
-        log_and_print("INFO", "Warte auf Thread-Beendigung...")
+        log_and_print("INFO", f"{ICONS['time']['waiting']} Warte auf Thread-Beendigung...")
         generator_thread.join(timeout=5)
     
     # Neuen Thread starten
     auto_generator_enabled = True
     generator_thread = threading.Thread(target=auto_error_generator, daemon=True)
     generator_thread.start()
-    log_and_print("INFO", "Auto-Generator neu gestartet")
+    log_and_print("INFO", f"{ICONS['system']['restart']} Auto-Generator neu gestartet")
 
 def setup_mqtt():
     """MQTT Client Setup - Optional"""
     global mqtt_client, mqtt_enabled
     
     if os.getenv("ENABLE_MQTT", "false").lower() != "true":
-        log_and_print("INFO", "MQTT deaktiviert (ENABLE_MQTT=false)")
+        disabled_icon = get_status_icon("disabled")
+        log_and_print("INFO", f"{disabled_icon} MQTT deaktiviert (ENABLE_MQTT=false)")
         return False
     
     def on_connect(client, userdata, flags, rc, properties=None):
         if rc == 0:
-            log_and_print("INFO", "MQTT erfolgreich verbunden")
+            connected_icon = get_status_icon("online")
+            log_and_print("INFO", f"{connected_icon} MQTT erfolgreich verbunden")
             client.subscribe("machines/+/errors")
             client.subscribe("opc/+/alarms")
             global mqtt_enabled
             mqtt_enabled = True
         else:
-            log_and_print("ERROR", "MQTT Verbindung fehlgeschlagen: %d", rc)
+            error_icon = get_status_icon("error")
+            log_and_print("ERROR", f"{error_icon} MQTT Verbindung fehlgeschlagen: %d", rc)
 
     def on_message(client, userdata, msg):
         """Verarbeitet eingehende MQTT-Nachrichten"""
@@ -211,20 +223,25 @@ def setup_mqtt():
             error_code = payload.get('code', 'unknown')
             description = payload.get('description', 'Keine Beschreibung')
             
-            log_and_print("INFO", "MQTT empfangen: %s/%s", machine, error_code)
-            log_and_print("DEBUG", "MQTT Details: Topic=%s, Payload=%s", msg.topic, payload)
+            receive_icon = ICONS["network"]["signal"]
+            log_and_print("INFO", f"{receive_icon} MQTT empfangen: %s/%s", machine, error_code)
+            log_and_print("DEBUG", f"{ICONS['data']['json']} MQTT Details: Topic=%s, Payload=%s", msg.topic, payload)
             
             if llm_client:
                 result = llm_client.send_machine_error(machine, error_code, description)
                 if result and result.get("success"):
-                    log_and_print("INFO", "MQTT-Fehler erfolgreich verarbeitet")
+                    success_icon = get_icon("process", "success")
+                    log_and_print("INFO", f"{success_icon} MQTT-Fehler erfolgreich verarbeitet")
                 else:
-                    log_and_print("WARNING", "MQTT-Fehler konnte nicht verarbeitet werden")
+                    warning_icon = get_icon("process", "warning")
+                    log_and_print("WARNING", f"{warning_icon} MQTT-Fehler konnte nicht verarbeitet werden")
             
         except json.JSONDecodeError as e:
-            log_and_print("ERROR", "Ungültige JSON in MQTT-Nachricht: %s", e)
+            error_icon = get_icon("process", "error")
+            log_and_print("ERROR", f"{error_icon} Ungültige JSON in MQTT-Nachricht: %s", e)
         except Exception as e:
-            log_and_print("ERROR", "MQTT-Verarbeitung fehlgeschlagen: %s", e)
+            error_icon = get_icon("process", "error")
+            log_and_print("ERROR", f"{error_icon} MQTT-Verarbeitung fehlgeschlagen: %s", e)
 
     mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     mqtt_client.on_connect = on_connect
@@ -234,19 +251,22 @@ def setup_mqtt():
     mqtt_port = int(os.getenv("MQTT_PORT", "1883"))
     
     try:
-        log_and_print("INFO", "Verbinde mit MQTT Broker: %s:%d", mqtt_broker, mqtt_port)
+        connecting_icon = get_status_icon("connecting")
+        log_and_print("INFO", f"{connecting_icon} Verbinde mit MQTT Broker: %s:%d", mqtt_broker, mqtt_port)
         mqtt_client.connect(mqtt_broker, mqtt_port, 60)
         mqtt_client.loop_start()
         return True
     except Exception as e:
-        log_and_print("ERROR", "MQTT Verbindung fehlgeschlagen: %s", e)
+        error_icon = get_status_icon("error")
+        log_and_print("ERROR", f"{error_icon} MQTT Verbindung fehlgeschlagen: %s", e)
         return False
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     global llm_client, auto_generator_enabled, generator_thread
-    log_and_print("INFO", "IoT-AnythingLLM Bridge startet...")
+    startup_msg = format_status_message("starting", f"IoT-AnythingLLM Bridge startet... {APP_VERSION}")
+    log_and_print("INFO", startup_msg)
     
     # AnythingLLM Client initialisieren
     try:
@@ -254,20 +274,26 @@ async def lifespan(app: FastAPI):
         
         # AnythingLLM testen
         if llm_client.test_connection():
-            log_and_print("INFO", "✅ AnythingLLM bereit %s", APP_VERSION)
+            ready_msg = format_status_message("online", f"AnythingLLM bereit {APP_VERSION}")
+            log_and_print("SUCCESS", ready_msg)
         else:
-            log_and_print("WARNING", "⚠️ AnythingLLM nicht erreichbar %s", APP_VERSION)
+            warning_msg = format_status_message("warning", f"AnythingLLM nicht erreichbar {APP_VERSION}")
+            log_and_print("WARNING", warning_msg)
     except Exception as e:
-        log_and_print("ERROR", "Fehler bei AnythingLLM-Initialisierung: %s", e)
+        error_icon = get_status_icon("error")
+        log_and_print("ERROR", f"{error_icon} Fehler bei AnythingLLM-Initialisierung: %s", e)
     
     # MQTT setup (optional)
     try:
         if setup_mqtt():
-            log_and_print("INFO", "✅ MQTT bereit")
+            mqtt_ready = format_status_message("online", "MQTT bereit")
+            log_and_print("SUCCESS", mqtt_ready)
         else:
-            log_and_print("INFO", "ℹ️ MQTT nicht verfügbar")
+            mqtt_info = format_status_message("standby", "MQTT nicht verfügbar")
+            log_and_print("INFO", mqtt_info)
     except Exception as e:
-        log_and_print("ERROR", "Fehler bei MQTT-Setup: %s", e)
+        error_icon = get_status_icon("error")
+        log_and_print("ERROR", f"{error_icon} Fehler bei MQTT-Setup: %s", e)
     
     # Auto-Generator starten
     auto_generator_enabled = os.getenv("ENABLE_AUTO_GENERATOR", "true").lower() == "true"
@@ -275,24 +301,30 @@ async def lifespan(app: FastAPI):
         try:
             generator_thread = threading.Thread(target=auto_error_generator, daemon=True)
             generator_thread.start()
-            log_and_print("INFO", "✅ Auto-Generator Thread gestartet")
+            generator_msg = format_status_message("online", "Auto-Generator Thread gestartet")
+            log_and_print("SUCCESS", generator_msg)
         except Exception as e:
-            log_and_print("ERROR", "Fehler beim Starten des Auto-Generators: %s", e)
+            error_icon = get_status_icon("error")
+            log_and_print("ERROR", f"{error_icon} Fehler beim Starten des Auto-Generators: %s", e)
     
-    log_and_print("INFO", "🎉 Bridge erfolgreich gestartet! %s", APP_VERSION)
+    bridge_ready = format_status_message("success", f"Bridge erfolgreich gestartet! {APP_VERSION}")
+    log_and_print("SUCCESS", bridge_ready)
     
     yield
     
     # Shutdown
-    log_and_print("INFO", "Bridge wird heruntergefahren...")
+    shutdown_msg = format_status_message("warning", "Bridge wird heruntergefahren...")
+    log_and_print("INFO", shutdown_msg)
     auto_generator_enabled = False
     if mqtt_client and mqtt_enabled:
         try:
             mqtt_client.loop_stop()
             mqtt_client.disconnect()
-            log_and_print("INFO", "MQTT-Verbindung getrennt")
+            disconnect_msg = format_status_message("offline", "MQTT-Verbindung getrennt")
+            log_and_print("INFO", disconnect_msg)
         except Exception as e:
-            log_and_print("ERROR", "Fehler beim MQTT-Disconnect: %s", e)
+            error_icon = get_status_icon("error")
+            log_and_print("ERROR", f"{error_icon} Fehler beim MQTT-Disconnect: %s", e)
 
 # FastAPI App mit Lifespan
 app = FastAPI(
@@ -304,7 +336,7 @@ app = FastAPI(
 
 @app.get("/")
 async def root():
-    log_and_print("DEBUG", "Root-Endpoint aufgerufen")
+    log_and_print("DEBUG", f"{ICONS['network']['api']} Root-Endpoint aufgerufen")
     return {
         "message": "IoT-AnythingLLM Bridge läuft",
         "version": APP_VERSION,
@@ -313,7 +345,7 @@ async def root():
             "app_version": APP_VERSION,
             "client_version": CLIENT_VERSION,
             "build_date": "2025-09-09",
-            "last_update": "Retry-Fix und Logging-Verbesserungen"
+            "last_update": "Icon-Standards und verbessertes Logging"
         },
         "timestamp": datetime.now().isoformat(),
         "anythingllm_status": "Verbunden" if llm_client and llm_client.test_connection() else "Getrennt",
@@ -338,10 +370,11 @@ async def get_version():
         "client_version": CLIENT_VERSION,
         "build_info": {
             "build_date": "2025-09-09",
-            "last_update": "Retry-Fix und Logging-Verbesserungen",
+            "last_update": "Icon-Standards und verbessertes Logging",
             "features": [
+                "Einheitliche Icon-Standards",
+                "Dynamische Status-Icons",
                 "Retry-Mechanismus mit sofortigem Exit bei Erfolg",
-                "Doppeltes Logging (Logger + Print)",
                 "Workspace-Discovery beim Startup",
                 "Lokale Fallback-Speicherung",
                 "Auto-Generator mit konfigurierbaren Intervallen",
@@ -351,6 +384,7 @@ async def get_version():
         "components": {
             "fastapi": "Latest",
             "anythingllm_client": CLIENT_VERSION,
+            "icon_standards": "v1.0.0",
             "mqtt": "Optional",
             "opcua": "Planned"
         }
@@ -369,27 +403,30 @@ async def status():
         "timestamp": current_time
     }
     
-    log_and_print("DEBUG", "Status abgefragt: %s", status_data)
+    log_and_print("DEBUG", f"{ICONS['monitoring']['dashboard']} Status abgefragt: %s", status_data)
     return status_data
 
 @app.post("/manual-error")
 async def manual_error(error: ErrorMessage):
     """Manuelles Senden eines Fehlers an AnythingLLM"""
     if not llm_client:
-        log_and_print("ERROR", "Manual-Error Anfrage, aber LLM-Client nicht initialisiert")
+        error_icon = get_status_icon("error")
+        log_and_print("ERROR", f"{error_icon} Manual-Error Anfrage, aber LLM-Client nicht initialisiert")
         raise HTTPException(status_code=500, detail="AnythingLLM Client nicht initialisiert")
     
-    log_and_print("INFO", "Manueller Fehler: %s/%s", error.machine, error.code)
-    log_and_print("DEBUG", "Manueller Fehler Details: %s - %s", error.code, error.description)
+    log_and_print("INFO", f"{ICONS['machine']['error']} Manueller Fehler: %s/%s", error.machine, error.code)
+    log_and_print("DEBUG", f"{ICONS['data']['config']} Manueller Fehler Details: %s - %s", error.code, error.description)
     
     try:
         result = llm_client.send_machine_error(error.machine, error.code, error.description)
         
         if result and result.get("success"):
             if result.get("api_response"):
-                log_and_print("INFO", "Manueller Fehler erfolgreich an AnythingLLM API gesendet")
+                success_icon = get_icon("process", "success")
+                log_and_print("SUCCESS", f"{success_icon} Manueller Fehler erfolgreich an AnythingLLM API gesendet")
             else:
-                log_and_print("INFO", "Manueller Fehler lokal gespeichert (API nicht verfügbar)")
+                storage_icon = get_icon("process", "warning")
+                log_and_print("INFO", f"{storage_icon} Manueller Fehler lokal gespeichert (API nicht verfügbar)")
             
             return {
                 "success": True, 
@@ -397,51 +434,60 @@ async def manual_error(error: ErrorMessage):
                 "result": result
             }
         else:
-            log_and_print("ERROR", "Manueller Fehler fehlgeschlagen")
+            error_icon = get_icon("process", "error")
+            log_and_print("ERROR", f"{error_icon} Manueller Fehler fehlgeschlagen")
             raise HTTPException(status_code=500, detail="Fehler beim Senden an AnythingLLM")
             
     except Exception as e:
-        log_and_print("ERROR", "Manueller Fehler Exception: %s", e)
+        error_icon = get_icon("process", "error")
+        log_and_print("ERROR", f"{error_icon} Manueller Fehler Exception: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/test")
 async def test_all():
     """Testet alle Verbindungen"""
-    log_and_print("INFO", "Teste alle Verbindungen")
+    test_icon = ICONS["monitoring"]["dashboard"]
+    log_and_print("INFO", f"{test_icon} Teste alle Verbindungen")
     current_time = datetime.now().strftime("%Y%m%d %H%M%S")
     
     if not llm_client:
-        log_and_print("ERROR", "Test-Anfrage, aber LLM-Client nicht initialisiert")
+        error_icon = get_status_icon("error")
+        log_and_print("ERROR", f"{error_icon} Test-Anfrage, aber LLM-Client nicht initialisiert")
         return {"error": "AnythingLLM Client nicht initialisiert"}
     
     try:
         anythingllm_test = llm_client.test_connection()
-        log_and_print("DEBUG", "AnythingLLM-Test Ergebnis: %s", anythingllm_test)
+        test_result = "Erfolgreich" if anythingllm_test else "Fehlgeschlagen"
+        log_and_print("DEBUG", f"{ICONS['network']['ping']} AnythingLLM-Test Ergebnis: %s", test_result)
         
         return {
-            "anythingllm_test": "Erfolgreich" if anythingllm_test else "Fehlgeschlagen",
+            "anythingllm_test": test_result,
             "mqtt_status": "Verbunden" if mqtt_enabled else "Deaktiviert",
             "auto_generator": "Aktiv" if auto_generator_enabled else "Deaktiviert",
             "timestamp": current_time
         }
     except Exception as e:
-        log_and_print("ERROR", "Test-Fehler: %s", e)
+        error_icon = get_icon("process", "error")
+        log_and_print("ERROR", f"{error_icon} Test-Fehler: %s", e)
         return {"error": str(e)}
 
 @app.post("/test-error")
 async def test_error():
     """Sendet einen Test-Fehler an AnythingLLM"""
     if not llm_client:
-        log_and_print("ERROR", "Test-Error Anfrage, aber LLM-Client nicht initialisiert")
+        error_icon = get_status_icon("error")
+        log_and_print("ERROR", f"{error_icon} Test-Error Anfrage, aber LLM-Client nicht initialisiert")
         raise HTTPException(status_code=500, detail="AnythingLLM Client nicht initialisiert")
     
-    log_and_print("INFO", "Sende Test-Fehler")
+    log_and_print("INFO", f"{ICONS['machine']['robot']} Sende Test-Fehler")
     
     try:
         result = llm_client.send_machine_error("Testmaschine_42", "E999", "Dies ist ein API-Test-Fehler")
         
         success = result is not None and result.get("success", False)
-        log_and_print("INFO", "Test-Fehler Ergebnis: %s", "erfolgreich" if success else "fehlgeschlagen")
+        result_text = "erfolgreich" if success else "fehlgeschlagen"
+        result_icon = get_icon("process", "success" if success else "error")
+        log_and_print("INFO", f"{result_icon} Test-Fehler Ergebnis: %s", result_text)
         
         return {
             "success": success,
@@ -449,7 +495,8 @@ async def test_error():
             "message": "Test-Fehler erfolgreich gesendet!" if result else "Test-Fehler fehlgeschlagen"
         }
     except Exception as e:
-        log_and_print("ERROR", "Test-Error Exception: %s", e)
+        error_icon = get_icon("process", "error")
+        log_and_print("ERROR", f"{error_icon} Test-Error Exception: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/auto-generator/start")
@@ -458,17 +505,20 @@ async def start_auto_generator():
     global auto_generator_enabled, generator_thread
     
     if auto_generator_enabled:
-        log_and_print("INFO", "Auto-Generator start angefragt, läuft bereits")
+        running_icon = get_status_icon("online")
+        log_and_print("INFO", f"{running_icon} Auto-Generator start angefragt, läuft bereits")
         return {"message": "Auto-Generator läuft bereits", "status": "active"}
     
-    log_and_print("INFO", "Starte Auto-Generator")
+    start_icon = ICONS["system"]["start"]
+    log_and_print("INFO", f"{start_icon} Starte Auto-Generator")
     try:
         auto_generator_enabled = True
         generator_thread = threading.Thread(target=auto_error_generator, daemon=True)
         generator_thread.start()
         return {"message": "Auto-Generator gestartet", "status": "started"}
     except Exception as e:
-        log_and_print("ERROR", "Fehler beim Starten des Auto-Generators: %s", e)
+        error_icon = get_icon("process", "error")
+        log_and_print("ERROR", f"{error_icon} Fehler beim Starten des Auto-Generators: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/auto-generator/stop")
@@ -477,10 +527,12 @@ async def stop_auto_generator():
     global auto_generator_enabled
     
     if not auto_generator_enabled:
-        log_and_print("INFO", "Auto-Generator stop angefragt, läuft nicht")
+        stopped_icon = get_status_icon("offline")
+        log_and_print("INFO", f"{stopped_icon} Auto-Generator stop angefragt, läuft nicht")
         return {"message": "Auto-Generator läuft nicht", "status": "inactive"}
     
-    log_and_print("INFO", "Stoppe Auto-Generator")
+    stop_icon = ICONS["system"]["stop"]
+    log_and_print("INFO", f"{stop_icon} Stoppe Auto-Generator")
     auto_generator_enabled = False
     
     return {"message": "Auto-Generator gestoppt", "status": "stopped"}
@@ -492,7 +544,8 @@ async def restart_auto_generator_endpoint():
         restart_auto_generator()
         return {"message": "Auto-Generator neu gestartet", "status": "restarted"}
     except Exception as e:
-        log_and_print("ERROR", "Fehler beim Restart: %s", e)
+        error_icon = get_icon("process", "error")
+        log_and_print("ERROR", f"{error_icon} Fehler beim Restart: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/auto-generator/status")
@@ -544,7 +597,8 @@ async def get_anythingllm_workspaces():
         return result
         
     except Exception as e:
-        log_and_print("ERROR", "Fehler beim Abrufen der Workspaces: %s", e)
+        error_icon = get_icon("process", "error")
+        log_and_print("ERROR", f"{error_icon} Fehler beim Abrufen der Workspaces: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
@@ -552,19 +606,19 @@ if __name__ == "__main__":
     startup_delay = int(os.getenv("STARTUP_DELAY", "5"))
     
     if startup_delay > 0:
-        print(f"Warte {startup_delay} Sekunden vor System-Start...")
+        print(f"{ICONS['time']['waiting']} Warte {startup_delay} Sekunden vor System-Start...")
         time.sleep(startup_delay)
     
-    log_and_print("INFO", "Starte IoT-AnythingLLM Bridge %s...", APP_VERSION)
-    log_and_print("INFO", "Client Version: %s", CLIENT_VERSION)
-    log_and_print("INFO", "Umgebungsvariablen:")
-    log_and_print("INFO", "   ANYTHINGLLM_URL: %s", os.getenv('ANYTHINGLLM_URL', 'NICHT_GESETZT'))
-    log_and_print("INFO", "   ENABLE_MQTT: %s", os.getenv('ENABLE_MQTT', 'false'))
-    log_and_print("INFO", "   ENABLE_AUTO_GENERATOR: %s", os.getenv('ENABLE_AUTO_GENERATOR', 'true'))
-    log_and_print("INFO", "   LOG_LEVEL: %s", os.getenv('LOG_LEVEL', 'INFO'))
-    log_and_print("INFO", "   LOG_FORMAT: %s", os.getenv('LOG_FORMAT', 'standard'))
-    log_and_print("INFO", "   STARTUP_DELAY: %s Sekunden", startup_delay)
-    log_and_print("INFO", "   AUTO_GENERATOR_INITIAL_DELAY: %s Sekunden", os.getenv('AUTO_GENERATOR_INITIAL_DELAY', '10'))
-    log_and_print("INFO", "   AUTO_GENERATOR_INTERVAL: %s Sekunden", os.getenv('AUTO_GENERATOR_INTERVAL', '60'))
+    log_and_print("INFO", f"{ICONS['system']['start']} Starte IoT-AnythingLLM Bridge %s...", APP_VERSION)
+    log_and_print("INFO", f"{ICONS['data']['config']} Client Version: %s", CLIENT_VERSION)
+    log_and_print("INFO", f"{ICONS['system']['config']} Umgebungsvariablen:")
+    log_and_print("INFO", f"   {ICONS['network']['api']} ANYTHINGLLM_URL: %s", os.getenv('ANYTHINGLLM_URL', 'NICHT_GESETZT'))
+    log_and_print("INFO", f"   {ICONS['network']['mqtt']} ENABLE_MQTT: %s", os.getenv('ENABLE_MQTT', 'false'))
+    log_and_print("INFO", f"   {ICONS['machine']['factory']} ENABLE_AUTO_GENERATOR: %s", os.getenv('ENABLE_AUTO_GENERATOR', 'true'))
+    log_and_print("INFO", f"   {ICONS['data']['log']} LOG_LEVEL: %s", os.getenv('LOG_LEVEL', 'INFO'))
+    log_and_print("INFO", f"   {ICONS['data']['config']} LOG_FORMAT: %s", os.getenv('LOG_FORMAT', 'standard'))
+    log_and_print("INFO", f"   {ICONS['time']['timer']} STARTUP_DELAY: %s Sekunden", startup_delay)
+    log_and_print("INFO", f"   {ICONS['time']['timer']} AUTO_GENERATOR_INITIAL_DELAY: %s Sekunden", os.getenv('AUTO_GENERATOR_INITIAL_DELAY', '10'))
+    log_and_print("INFO", f"   {ICONS['time']['clock']} AUTO_GENERATOR_INTERVAL: %s Sekunden", os.getenv('AUTO_GENERATOR_INTERVAL', '60'))
     
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
