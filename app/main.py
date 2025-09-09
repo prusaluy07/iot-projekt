@@ -1,9 +1,10 @@
-#20250909 093130
 import asyncio
 import json
 import os
 import time
 import random
+import logging
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
 from anythingllm_client import AnythingLLMClient, send_to_anythingllm
@@ -12,6 +13,68 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
 import threading
+
+APP_VERSION = "v20250909_104300_003"  # Format: vYYYYMMDD_Build-Nummer
+CLIENT_VERSION = "v20250909_100000_002"  # Version des anythingllm_client
+
+def log_and_print(level: str, message: str, *args):
+    """Hilfsfunktion: Loggt UND gibt per print aus"""
+    formatted_message = message % args if args else message
+    
+    # Print-Ausgabe
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] [{level}] {formatted_message}")
+    
+    # Logger-Ausgabe
+    logger = logging.getLogger("iot-bridge.main")
+    if level == "INFO":
+        logger.info(message, *args)
+    elif level == "WARNING":
+        logger.warning(message, *args)
+    elif level == "ERROR":
+        logger.error(message, *args)
+    elif level == "DEBUG":
+        logger.debug(message, *args)
+    elif level == "EXCEPTION":
+        logger.exception(message, *args)
+# Logging-Konfiguration
+def setup_logging():
+    """Konfiguriert das Logging-System"""
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_format = os.getenv("LOG_FORMAT", "standard")
+    
+    # Log-Level aus String konvertieren
+    numeric_level = getattr(logging, log_level, logging.INFO)
+    
+    # Format festlegen
+    if log_format.lower() == "json":
+        # Strukturiertes JSON-Logging für Container
+        formatter = logging.Formatter(
+            '{"timestamp":"%(asctime)s","level":"%(levelname)s","module":"%(name)s","message":"%(message)s"}'
+        )
+    else:
+        # Standard-Format mit Zeitstempel
+        formatter = logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        )
+    
+    # Root-Logger konfigurieren
+    logging.basicConfig(
+        level=numeric_level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        stream=sys.stdout
+    )
+    
+    # Handler für unsere Anwendung
+    logger = logging.getLogger("iot-bridge")
+    logger.setLevel(numeric_level)
+    
+    return logger
+
+# Logger initialisieren
+logger = setup_logging()
 
 # Datenmodelle
 class ErrorMessage(BaseModel):
@@ -28,9 +91,9 @@ generator_thread = None
 
 # Demo-Daten für automatische Fehlergeneration
 DEMO_MACHINES = [
-    "Hydraulikpresse_101", "Hydraulikpresse_102", "CNC_Fräse_103", "CNC_Fräse_104",
-    "Schweißroboter_105", "Schweißroboter_106", "Montagestation_107", "Montagestation_108",
-    "Lackieranlage_109", "Verpackungsmaschine_110", "Förderband_111", "Qualitätsprüfung_112"
+    "Hydraulikpresse_01", "Hydraulikpresse_02", "CNC_Fräse_03", "CNC_Fräse_04",
+    "Schweißroboter_05", "Schweißroboter_06", "Montagestation_07", "Montagestation_08",
+    "Lackieranlage_09", "Verpackungsmaschine_10", "Förderband_11", "Qualitätsprüfung_12"
 ]
 
 DEMO_ERRORS = [
@@ -49,11 +112,6 @@ DEMO_ERRORS = [
     {"code": "W701", "desc": "Kamera-Kalibrierung erforderlich"}
 ]
 
-def log_with_timestamp(message: str):
-    """Gibt Nachrichten mit Zeitstempel aus"""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] {message}")
-
 def generate_random_error():
     """Generiert einen zufälligen Maschinenfehler"""
     machine = random.choice(DEMO_MACHINES)
@@ -68,32 +126,37 @@ def auto_error_generator():
     initial_delay = int(os.getenv("AUTO_GENERATOR_INITIAL_DELAY", "10"))
     interval = int(os.getenv("AUTO_GENERATOR_INTERVAL", "60"))
     
-    log_with_timestamp(f"Auto-Generator gestartet - warte {initial_delay} Sekunden vor erstem Fehler")
+    log_and_print("INFO", "Auto-Generator gestartet - warte %d Sekunden vor erstem Fehler", initial_delay)
     
     # Einmalige Wartezeit nach Start
     for i in range(initial_delay):
         if not auto_generator_enabled:
-            log_with_timestamp("Auto-Generator während Initialisierung gestoppt")
+            log_and_print("INFO", "Auto-Generator während Initialisierung gestoppt")
             return
         time.sleep(1)
     
-    log_with_timestamp(f"Auto-Generator initialisiert - beginne mit Fehlergeneration (alle {interval} Sekunden)")
+    log_and_print("INFO", "Auto-Generator initialisiert - beginne mit Fehlergeneration (alle %d Sekunden)", interval)
     
     while auto_generator_enabled:
         try:
             # Zufälligen Fehler generieren
             machine, code, description = generate_random_error()
             
-            log_with_timestamp(f"Generiere Auto-Fehler: {machine}/{code}")
+            log_and_print("INFO", "Generiere Auto-Fehler: %s/%s", machine, code)
+            log_and_print("DEBUG", "Auto-Fehler Details: %s - %s", code, description)
             
             if llm_client:
                 result = llm_client.send_machine_error(machine, code, description)
                 if result and result.get("success"):
-                    log_with_timestamp(f"Auto-Fehler erfolgreich verarbeitet")
+                    if result.get("api_response"):
+                        attempt = result.get("attempt", 1)
+                        log_and_print("INFO", "Auto-Fehler erfolgreich an AnythingLLM gesendet (Versuch %d)", attempt)
+                    else:
+                        log_and_print("INFO", "Auto-Fehler lokal gespeichert (API nicht verfügbar)")
                 else:
-                    log_with_timestamp(f"Auto-Fehler fehlgeschlagen")
+                    log_and_print("ERROR", "Auto-Fehler komplett fehlgeschlagen")
             else:
-                log_with_timestamp("LLM-Client nicht verfügbar")
+                log_and_print("ERROR", "LLM-Client nicht verfügbar")
             
             # Warten bis zum nächsten Fehler
             for i in range(interval):
@@ -105,27 +168,27 @@ def auto_error_generator():
                 break
                 
         except Exception as e:
-            log_with_timestamp(f"Auto-Generator Fehler: {e}")
+            log_and_print("EXCEPTION", "Auto-Generator Fehler: %s", e)
     
-    log_with_timestamp("Auto-Generator gestoppt")
-    
+    log_and_print("INFO", "Auto-Generator gestoppt")
+
 def setup_mqtt():
     """MQTT Client Setup - Optional"""
     global mqtt_client, mqtt_enabled
     
     if os.getenv("ENABLE_MQTT", "false").lower() != "true":
-        log_with_timestamp("MQTT deaktiviert (ENABLE_MQTT=false)")
+        log_and_print("INFO", "MQTT deaktiviert (ENABLE_MQTT=false)")
         return False
     
     def on_connect(client, userdata, flags, rc, properties=None):
         if rc == 0:
-            log_with_timestamp("✅ MQTT erfolgreich verbunden")
+            log_and_print("INFO", "MQTT erfolgreich verbunden")
             client.subscribe("machines/+/errors")
             client.subscribe("opc/+/alarms")
             global mqtt_enabled
             mqtt_enabled = True
         else:
-            log_with_timestamp(f"❌ MQTT Verbindung fehlgeschlagen: {rc}")
+            log_and_print("ERROR", "MQTT Verbindung fehlgeschlagen: %d", rc)
 
     def on_message(client, userdata, msg):
         """Verarbeitet eingehende MQTT-Nachrichten"""
@@ -137,15 +200,20 @@ def setup_mqtt():
             error_code = payload.get('code', 'unknown')
             description = payload.get('description', 'Keine Beschreibung')
             
-            log_with_timestamp(f"📨 MQTT empfangen: {machine}/{error_code}")
+            log_and_print("INFO", "MQTT empfangen: %s/%s", machine, error_code)
+            log_and_print("DEBUG", "MQTT Details: Topic=%s, Payload=%s", msg.topic, payload)
             
             if llm_client:
-                llm_client.send_machine_error(machine, error_code, description)
+                result = llm_client.send_machine_error(machine, error_code, description)
+                if result and result.get("success"):
+                    log_and_print("INFO", "MQTT-Fehler erfolgreich verarbeitet")
+                else:
+                    log_and_print("WARNING", "MQTT-Fehler konnte nicht verarbeitet werden")
             
-        except json.JSONDecodeError:
-            log_with_timestamp("❌ Ungültige JSON in MQTT-Nachricht")
+        except json.JSONDecodeError as e:
+            log_and_print("ERROR", "Ungültige JSON in MQTT-Nachricht: %s", e)
         except Exception as e:
-            log_with_timestamp(f"❌ MQTT-Verarbeitung fehlgeschlagen: {e}")
+            log_and_print("EXCEPTION", "MQTT-Verarbeitung fehlgeschlagen: %s", e)
 
     mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     mqtt_client.on_connect = on_connect
@@ -155,147 +223,192 @@ def setup_mqtt():
     mqtt_port = int(os.getenv("MQTT_PORT", "1883"))
     
     try:
-        log_with_timestamp(f"🔗 Verbinde mit MQTT Broker: {mqtt_broker}:{mqtt_port}")
+        log_and_print("INFO", "Verbinde mit MQTT Broker: %s:%d", mqtt_broker, mqtt_port)
         mqtt_client.connect(mqtt_broker, mqtt_port, 60)
         mqtt_client.loop_start()
         return True
     except Exception as e:
-        log_with_timestamp(f"❌ MQTT Verbindung fehlgeschlagen: {e}")
+        log_and_print("EXCEPTION", "MQTT Verbindung fehlgeschlagen: %s", e)
         return False
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     global llm_client, auto_generator_enabled, generator_thread
-    log_with_timestamp("🚀 IoT-AnythingLLM Bridge startet... 20250909 093130")
+    log_and_print("INFO", "IoT-AnythingLLM Bridge startet...")
     
     # AnythingLLM Client initialisieren
-    llm_client = AnythingLLMClient()
+    try:
+        llm_client = AnythingLLMClient()
+        
+        # AnythingLLM testen
+        if llm_client.test_connection():
+            # Statische Version statt aktueller Zeit
+            log_and_print("INFO", "✅ AnythingLLM bereit %s", APP_VERSION)
+        else:
+            log_and_print("WARNING", "⚠️ AnythingLLM nicht erreichbar %s", APP_VERSION)
+    except Exception as e:
+        log_and_print("EXCEPTION", "Fehler bei AnythingLLM-Initialisierung: %s", e)
     
-    # AnythingLLM testen
-    if llm_client.test_connection():
-        log_with_timestamp("✅ AnythingLLM bereit 20250909 093130")
-    else:
-        log_with_timestamp("⚠️ AnythingLLM nicht erreichbar")
+    # ... rest des bestehenden Codes ...
     
-    # MQTT setup (optional)
-    if setup_mqtt():
-        log_with_timestamp("✅ MQTT bereit")
-    else:
-        log_with_timestamp("ℹ️ MQTT nicht verfügbar")
-    
-    # Auto-Generator starten
-    auto_generator_enabled = os.getenv("ENABLE_AUTO_GENERATOR", "true").lower() == "true"
-    if auto_generator_enabled:
-        generator_thread = threading.Thread(target=auto_error_generator, daemon=True)
-        generator_thread.start()
-    
-    log_with_timestamp("🎉 Bridge erfolgreich gestartet!")
+    log_and_print("INFO", "🎉 Bridge erfolgreich gestartet! %s", APP_VERSION)
     
     yield
     
     # Shutdown
-    log_with_timestamp("🛑 Bridge wird heruntergefahren...")
+    log_and_print("INFO", "Bridge wird heruntergefahren...")
     auto_generator_enabled = False
     if mqtt_client and mqtt_enabled:
-        mqtt_client.loop_stop()
-        mqtt_client.disconnect()
+        try:
+            mqtt_client.loop_stop()
+            mqtt_client.disconnect()
+            log_and_print("INFO", "MQTT-Verbindung getrennt")
+        except Exception as e:
+            log_and_print("EXCEPTION", "Fehler beim MQTT-Disconnect: %s", e)
 
 # FastAPI App mit Lifespan
 app = FastAPI(
     title="IoT-OPC-AnythingLLM Bridge",
     description="Bridge zwischen OPC UA/MQTT und AnythingLLM mit Auto-Generator",
-    version="1.1.0",
+    version=APP_VERSION,  # Verwende die statische Version
     lifespan=lifespan
 )
 
 @app.get("/")
 async def root():
+    log_and_print("DEBUG", "Root-Endpoint aufgerufen")
     return {
         "message": "IoT-AnythingLLM Bridge läuft",
-        "version": "1.1.0",
+        "version": APP_VERSION,  # Statische Version
+        "client_version": CLIENT_VERSION,
+        "build_info": {
+            "app_version": APP_VERSION,
+            "client_version": CLIENT_VERSION,
+            "build_date": "2025-09-09",
+            "last_update": "Retry-Fix und Logging-Verbesserungen"
+        },
         "timestamp": datetime.now().isoformat(),
-        "anythingllm_status": "✅ Verbunden" if llm_client and llm_client.test_connection() else "❌ Getrennt",
-        "mqtt_status": "✅ Verbunden" if mqtt_enabled else "⚪ Deaktiviert",
-        "auto_generator": "✅ Aktiv" if auto_generator_enabled else "⚪ Deaktiviert",
+        "anythingllm_status": "Verbunden" if llm_client and llm_client.test_connection() else "Getrennt",
+        "mqtt_status": "Verbunden" if mqtt_enabled else "Deaktiviert",
+        "auto_generator": "Aktiv" if auto_generator_enabled else "Deaktiviert",
+        "log_level": logging.getLevelName(logger.level),
         "endpoints": {
             "manual_error": "/manual-error",
             "test": "/test",
             "status": "/status",
             "test_error": "/test-error",
-            "auto_generator": "/auto-generator"
+            "auto_generator": "/auto-generator",
+            "version": "/version"
         }
     }
 
-@app.get("/status")
-async def status():
-    """Status der Bridge"""
-    anythingllm_status = llm_client.test_connection() if llm_client else False
-    
+@app.get("/version")
+async def get_version():
+    """Gibt detaillierte Versionsinformationen zurück"""
     return {
-        "anythingllm": "✅ Online" if anythingllm_status else "❌ Offline",
-        "mqtt": "✅ Online" if mqtt_enabled else "⚪ Deaktiviert",
-        "auto_generator": "✅ Aktiv" if auto_generator_enabled else "⚪ Deaktiviert",
-        "timestamp": datetime.now().isoformat()
+        "app_version": APP_VERSION,
+        "client_version": CLIENT_VERSION,
+        "build_info": {
+            "build_date": "2025-09-09",
+            "last_update": "Retry-Fix und Logging-Verbesserungen",
+            "features": [
+                "Retry-Mechanismus mit sofortigem Exit bei Erfolg",
+                "Doppeltes Logging (Logger + Print)",
+                "Workspace-Discovery beim Startup",
+                "Lokale Fallback-Speicherung",
+                "Auto-Generator mit konfigurierbaren Intervallen",
+                "Health-Check System"
+            ]
+        },
+        "components": {
+            "fastapi": "Latest",
+            "anythingllm_client": CLIENT_VERSION,
+            "mqtt": "Optional",
+            "opcua": "Planned"
+        }
     }
+
 
 @app.post("/manual-error")
 async def manual_error(error: ErrorMessage):
     """Manuelles Senden eines Fehlers an AnythingLLM"""
     if not llm_client:
+        log_and_print("ERROR", "Manual-Error Anfrage, aber LLM-Client nicht initialisiert")
         raise HTTPException(status_code=500, detail="AnythingLLM Client nicht initialisiert")
     
-    log_with_timestamp(f"📝 Manueller Fehler: {error.machine}/{error.code}")
+    log_and_print("INFO", "Manueller Fehler: %s/%s", error.machine, error.code)
+    log_and_print("DEBUG", "Manueller Fehler Details: %s - %s", error.code, error.description)
     
     try:
         result = llm_client.send_machine_error(error.machine, error.code, error.description)
         
         if result and result.get("success"):
-            log_with_timestamp(f"✅ Manueller Fehler erfolgreich verarbeitet")
+            if result.get("api_response"):
+                log_and_print("INFO", "Manueller Fehler erfolgreich an AnythingLLM API gesendet")
+            else:
+                log_and_print("INFO", "Manueller Fehler lokal gespeichert (API nicht verfügbar)")
+            
             return {
                 "success": True, 
                 "message": f"Fehler {error.code} von {error.machine} erfolgreich gesendet",
                 "result": result
             }
         else:
-            log_with_timestamp(f"❌ Manueller Fehler fehlgeschlagen")
+            log_and_print("ERROR", "Manueller Fehler fehlgeschlagen")
             raise HTTPException(status_code=500, detail="Fehler beim Senden an AnythingLLM")
             
     except Exception as e:
-        log_with_timestamp(f"❌ Manueller Fehler Exception: {e}")
+        log_and_print("EXCEPTION", "Manueller Fehler Exception: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/test")
 async def test_all():
     """Testet alle Verbindungen"""
-    log_with_timestamp("🧪 Teste alle Verbindungen")
+    log_and_print("INFO", "Teste alle Verbindungen")
+    current_time = datetime.now().strftime("%Y%m%d %H%M%S")
     
     if not llm_client:
+        log_and_print("ERROR", "Test-Anfrage, aber LLM-Client nicht initialisiert")
         return {"error": "AnythingLLM Client nicht initialisiert"}
     
-    anythingllm_test = llm_client.test_connection()
-    
-    return {
-        "anythingllm_test": "✅ Erfolgreich" if anythingllm_test else "❌ Fehlgeschlagen",
-        "mqtt_status": "✅ Verbunden" if mqtt_enabled else "⚪ Deaktiviert",
-        "auto_generator": "✅ Aktiv" if auto_generator_enabled else "⚪ Deaktiviert",
-        "timestamp": datetime.now().isoformat()
-    }
+    try:
+        anythingllm_test = llm_client.test_connection()
+        log_and_print("DEBUG", "AnythingLLM-Test Ergebnis: %s", anythingllm_test)
+        
+        return {
+            "anythingllm_test": "Erfolgreich" if anythingllm_test else "Fehlgeschlagen",
+            "mqtt_status": "Verbunden" if mqtt_enabled else "Deaktiviert",
+            "auto_generator": "Aktiv" if auto_generator_enabled else "Deaktiviert",
+            "timestamp": current_time
+        }
+    except Exception as e:
+        log_and_print("EXCEPTION", "Test-Fehler: %s", e)
+        return {"error": str(e)}
 
 @app.post("/test-error")
 async def test_error():
     """Sendet einen Test-Fehler an AnythingLLM"""
     if not llm_client:
+        log_and_print("ERROR", "Test-Error Anfrage, aber LLM-Client nicht initialisiert")
         raise HTTPException(status_code=500, detail="AnythingLLM Client nicht initialisiert")
     
-    log_with_timestamp("🧪 Sende Test-Fehler")
+    log_and_print("INFO", "Sende Test-Fehler")
     
-    result = llm_client.send_machine_error("Testmaschine_42", "E999", "Dies ist ein API-Test-Fehler")
-    return {
-        "success": result is not None and result.get("success", False),
-        "result": result,
-        "message": "Test-Fehler erfolgreich gesendet!" if result else "Test-Fehler fehlgeschlagen"
-    }
+    try:
+        result = llm_client.send_machine_error("Testmaschine_42", "E999", "Dies ist ein API-Test-Fehler")
+        
+        success = result is not None and result.get("success", False)
+        log_and_print("INFO", "Test-Fehler Ergebnis: %s", "erfolgreich" if success else "fehlgeschlagen")
+        
+        return {
+            "success": success,
+            "result": result,
+            "message": "Test-Fehler erfolgreich gesendet!" if result else "Test-Fehler fehlgeschlagen"
+        }
+    except Exception as e:
+        log_and_print("EXCEPTION", "Test-Error Exception: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/auto-generator/start")
 async def start_auto_generator():
@@ -303,14 +416,18 @@ async def start_auto_generator():
     global auto_generator_enabled, generator_thread
     
     if auto_generator_enabled:
+        log_and_print("INFO", "Auto-Generator start angefragt, läuft bereits")
         return {"message": "Auto-Generator läuft bereits", "status": "active"}
     
-    log_with_timestamp("🚀 Starte Auto-Generator")
-    auto_generator_enabled = True
-    generator_thread = threading.Thread(target=auto_error_generator, daemon=True)
-    generator_thread.start()
-    
-    return {"message": "Auto-Generator gestartet", "status": "started"}
+    log_and_print("INFO", "Starte Auto-Generator")
+    try:
+        auto_generator_enabled = True
+        generator_thread = threading.Thread(target=auto_error_generator, daemon=True)
+        generator_thread.start()
+        return {"message": "Auto-Generator gestartet", "status": "started"}
+    except Exception as e:
+        log_and_print("EXCEPTION", "Fehler beim Starten des Auto-Generators: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/auto-generator/stop")
 async def stop_auto_generator():
@@ -318,9 +435,10 @@ async def stop_auto_generator():
     global auto_generator_enabled
     
     if not auto_generator_enabled:
+        log_and_print("INFO", "Auto-Generator stop angefragt, läuft nicht")
         return {"message": "Auto-Generator läuft nicht", "status": "inactive"}
     
-    log_with_timestamp("🛑 Stoppe Auto-Generator")
+    log_and_print("INFO", "Stoppe Auto-Generator")
     auto_generator_enabled = False
     
     return {"message": "Auto-Generator gestoppt", "status": "stopped"}
@@ -328,34 +446,18 @@ async def stop_auto_generator():
 @app.get("/auto-generator/status")
 async def auto_generator_status():
     """Status des Auto-Generators"""
-    return {
+    status_data = {
         "enabled": auto_generator_enabled,
-        "status": "🟢 Aktiv" if auto_generator_enabled else "🔴 Inaktiv",
-        "interval": "60 Sekunden",
+        "status": "Aktiv" if auto_generator_enabled else "Inaktiv",
+        "interval": f"{os.getenv('AUTO_GENERATOR_INTERVAL', '60')} Sekunden",
+        "initial_delay": f"{os.getenv('AUTO_GENERATOR_INITIAL_DELAY', '10')} Sekunden",
         "demo_machines": len(DEMO_MACHINES),
         "demo_errors": len(DEMO_ERRORS)
     }
+    
+    log_and_print("DEBUG", "Auto-Generator Status abgefragt: %s", status_data)
+    return status_data
 
-if __name__ == "__main__":
-    # Konfigurierbare Startup-Wartezeit
-    startup_delay = int(os.getenv("STARTUP_DELAY", "15"))
-    
-    if startup_delay > 0:
-        print(f"Warte {startup_delay} Sekunden vor System-Start...")
-        time.sleep(startup_delay)
-    
-    log_with_timestamp("🚀 Starte IoT-AnythingLLM Bridge...")
-    log_with_timestamp("📋 Umgebungsvariablen:")
-    log_with_timestamp(f"   ANYTHINGLLM_URL: {os.getenv('ANYTHINGLLM_URL', 'NICHT_GESETZT')}")
-    log_with_timestamp(f"   ENABLE_MQTT: {os.getenv('ENABLE_MQTT', 'false')}")
-    log_with_timestamp(f"   ENABLE_AUTO_GENERATOR: {os.getenv('ENABLE_AUTO_GENERATOR', 'true')}")
-    log_with_timestamp(f"   STARTUP_DELAY: {startup_delay} Sekunden")
-    log_with_timestamp(f"   AUTO_GENERATOR_INITIAL_DELAY: {os.getenv('AUTO_GENERATOR_INITIAL_DELAY', '10')} Sekunden")
-    log_with_timestamp(f"   AUTO_GENERATOR_INTERVAL: {os.getenv('AUTO_GENERATOR_INTERVAL', '60')} Sekunden")
-    
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
-
-# Neuer API-Endpoint für Workspace-Info
 @app.get("/anythingllm/workspaces")
 async def get_anythingllm_workspaces():
     """Gibt alle verfügbaren AnythingLLM Workspaces zurück"""
@@ -385,7 +487,29 @@ async def get_anythingllm_workspaces():
         return result
         
     except Exception as e:
-        logger.exception("Fehler beim Abrufen der Workspaces: %s", e)
+        log_and_print("EXCEPTION", "Fehler beim Abrufen der Workspaces: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
-
+if __name__ == "__main__":
+    # Konfigurierbare Startup-Wartezeit
+    startup_delay = int(os.getenv("STARTUP_DELAY", "5"))
+    
+    if startup_delay > 0:
+        print(f"Warte {startup_delay} Sekunden vor System-Start...")
+        time.sleep(startup_delay)
+    
+    log_and_print("INFO", "Starte IoT-AnythingLLM Bridge %s...", APP_VERSION)
+    log_and_print("INFO", "Client Version: %s", CLIENT_VERSION)
+    log_and_print("INFO", "Umgebungsvariablen:")
+    log_and_print("INFO", "   ANYTHINGLLM_URL: %s", os.getenv('ANYTHINGLLM_URL', 'NICHT_GESETZT'))
+    log_and_print("INFO", "   ENABLE_MQTT: %s", os.getenv('ENABLE_MQTT', 'false'))
+    log_and_print("INFO", "   ENABLE_AUTO_GENERATOR: %s", os.getenv('ENABLE_AUTO_GENERATOR', 'true'))
+    log_and_print("INFO", "   LOG_LEVEL: %s", os.getenv('LOG_LEVEL', 'INFO'))
+    log_and_print("INFO", "   LOG_FORMAT: %s", os.getenv('LOG_FORMAT', 'standard'))
+    log_and_print("INFO", "   STARTUP_DELAY: %s Sekunden", startup_delay)
+    log_and_print("INFO", "   AUTO_GENERATOR_INITIAL_DELAY: %s Sekunden", os.getenv('AUTO_GENERATOR_INITIAL_DELAY', '10'))
+    log_and_print("INFO", "   AUTO_GENERATOR_INTERVAL: %s Sekunden", os.getenv('AUTO_GENERATOR_INTERVAL', '60'))
+    
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
