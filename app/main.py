@@ -15,7 +15,7 @@ import uvicorn
 import threading
 
 APP_VERSION = "v20250909_1608_6"
-CLIENT_VERSION = "v20250909_1151_005"
+CLIENT_VERSION = "v20250909_2012_006"
 
 def log_and_print(level: str, message: str, *args):
     """Hilfsfunktion: Nur print-Ausgabe"""
