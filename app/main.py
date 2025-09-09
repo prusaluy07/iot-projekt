@@ -14,7 +14,7 @@ from pydantic import BaseModel
 import uvicorn
 import threading
 
-APP_VERSION = "v20250909_1155_004"  # Format: vYYYYMMDD_Build-Nummer
+APP_VERSION = "v20250909_1600_5"  # Format: vYYYYMMDD_Build-Nummer
 CLIENT_VERSION = "v20250909_1151_004"  # Version des anythingllm_client
 
 def log_and_print(level: str, message: str, *args):
@@ -137,41 +137,46 @@ def auto_error_generator():
     
     log_and_print("INFO", "Auto-Generator initialisiert - beginne mit Fehlergeneration (alle %d Sekunden)", interval)
     
+    error_count = 0
     while auto_generator_enabled:
         try:
-            # Zufälligen Fehler generieren
-            machine, code, description = generate_random_error()
+            # Heartbeat-Log alle 10 Durchläufe
+            if error_count % 10 == 0:
+                log_and_print("DEBUG", "Auto-Generator Heartbeat - Fehler generiert: %d", error_count)
             
-            log_and_print("INFO", "Generiere Auto-Fehler: %s/%s", machine, code)
-            log_and_print("DEBUG", "Auto-Fehler Details: %s - %s", code, description)
+            # ... Fehler generieren ...
+            error_count += 1
             
-            if llm_client:
-                result = llm_client.send_machine_error(machine, code, description)
-                if result and result.get("success"):
-                    if result.get("api_response"):
-                        attempt = result.get("attempt", 1)
-                        log_and_print("INFO", "Auto-Fehler erfolgreich an AnythingLLM gesendet (Versuch %d)", attempt)
-                    else:
-                        log_and_print("INFO", "Auto-Fehler lokal gespeichert (API nicht verfügbar)")
-                else:
-                    log_and_print("ERROR", "Auto-Fehler komplett fehlgeschlagen")
-            else:
-                log_and_print("ERROR", "LLM-Client nicht verfügbar")
-            
-            # Warten bis zum nächsten Fehler
-            for i in range(interval):
-                if not auto_generator_enabled:
-                    break
-                time.sleep(1)
-            
-            if not auto_generator_enabled:
-                break
-                
         except Exception as e:
-            log_and_print("EXCEPTION", "Auto-Generator Fehler: %s", e)
+            log_and_print("ERROR", "Auto-Generator Fehler: %s", e)
     
     log_and_print("INFO", "Auto-Generator gestoppt")
+def restart_auto_generator():
+    """Startet Auto-Generator neu (hilfreich bei Problemen)"""
+    global auto_generator_enabled, generator_thread
+    
+    # Alten Thread stoppen
+    auto_generator_enabled = False
+    if generator_thread and generator_thread.is_alive():
+        log_and_print("INFO", "Warte auf Thread-Beendigung...")
+        generator_thread.join(timeout=5)
+    
+    # Neuen Thread starten
+    auto_generator_enabled = True
+    generator_thread = threading.Thread(target=auto_error_generator, daemon=True)
+    generator_thread.start()
+    log_and_print("INFO", "Auto-Generator neu gestartet")
 
+@app.post("/auto-generator/restart")
+async def restart_auto_generator_endpoint():
+    """Startet den Auto-Generator neu (bei Problemen)"""
+    try:
+        restart_auto_generator()
+        return {"message": "Auto-Generator neu gestartet", "status": "restarted"}
+    except Exception as e:
+        log_and_print("ERROR", "Fehler beim Restart: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+        
 def setup_mqtt():
     """MQTT Client Setup - Optional"""
     global mqtt_client, mqtt_enabled
@@ -446,16 +451,21 @@ async def stop_auto_generator():
 @app.get("/auto-generator/status")
 async def auto_generator_status():
     """Status des Auto-Generators"""
+    global generator_thread
+    
+    thread_alive = generator_thread.is_alive() if generator_thread else False
+    
     status_data = {
         "enabled": auto_generator_enabled,
         "status": "Aktiv" if auto_generator_enabled else "Inaktiv",
+        "thread_alive": thread_alive,  # Neuer Check
+        "thread_healthy": auto_generator_enabled and thread_alive,
         "interval": f"{os.getenv('AUTO_GENERATOR_INTERVAL', '60')} Sekunden",
         "initial_delay": f"{os.getenv('AUTO_GENERATOR_INITIAL_DELAY', '10')} Sekunden",
         "demo_machines": len(DEMO_MACHINES),
         "demo_errors": len(DEMO_ERRORS)
     }
     
-    log_and_print("DEBUG", "Auto-Generator Status abgefragt: %s", status_data)
     return status_data
 
 @app.get("/anythingllm/workspaces")
