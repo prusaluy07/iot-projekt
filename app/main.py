@@ -14,8 +14,8 @@ from pydantic import BaseModel
 import uvicorn
 import threading
 
-APP_VERSION = "v20250909_104300_003"  # Format: vYYYYMMDD_Build-Nummer
-CLIENT_VERSION = "v20250909_104800_002"  # Version des anythingllm_client
+APP_VERSION = "v20250909_1155_004"  # Format: vYYYYMMDD_Build-Nummer
+CLIENT_VERSION = "v20250909_1151_004"  # Version des anythingllm_client
 
 def log_and_print(level: str, message: str, *args):
     """Hilfsfunktion: Nur print-Ausgabe"""
@@ -86,7 +86,7 @@ class ErrorMessage(BaseModel):
 llm_client = None
 mqtt_client = None
 mqtt_enabled = False
-auto_generator_enabled = False
+auto_generator_enabled = True
 generator_thread = None
 
 # Demo-Daten für automatische Fehlergeneration
