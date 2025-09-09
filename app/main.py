@@ -167,14 +167,14 @@ def setup_mqtt():
 async def lifespan(app: FastAPI):
     # Startup
     global llm_client, auto_generator_enabled, generator_thread
-    log_with_timestamp("🚀 IoT-AnythingLLM Bridge startet...")
+    log_with_timestamp("🚀 IoT-AnythingLLM Bridge startet... 20250909 093130")
     
     # AnythingLLM Client initialisieren
     llm_client = AnythingLLMClient()
     
     # AnythingLLM testen
     if llm_client.test_connection():
-        log_with_timestamp("✅ AnythingLLM bereit")
+        log_with_timestamp("✅ AnythingLLM bereit 20250909 093130")
     else:
         log_with_timestamp("⚠️ AnythingLLM nicht erreichbar")
     
