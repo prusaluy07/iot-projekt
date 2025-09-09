@@ -1,3 +1,4 @@
+#20250909 093130
 import asyncio
 import json
 import os
@@ -27,9 +28,9 @@ generator_thread = None
 
 # Demo-Daten für automatische Fehlergeneration
 DEMO_MACHINES = [
-    "Hydraulikpresse_01", "Hydraulikpresse_02", "CNC_Fräse_03", "CNC_Fräse_04",
-    "Schweißroboter_05", "Schweißroboter_06", "Montagestation_07", "Montagestation_08",
-    "Lackieranlage_09", "Verpackungsmaschine_10", "Förderband_11", "Qualitätsprüfung_12"
+    "Hydraulikpresse_101", "Hydraulikpresse_102", "CNC_Fräse_103", "CNC_Fräse_104",
+    "Schweißroboter_105", "Schweißroboter_106", "Montagestation_107", "Montagestation_108",
+    "Lackieranlage_109", "Verpackungsmaschine_110", "Förderband_111", "Qualitätsprüfung_112"
 ]
 
 DEMO_ERRORS = [
