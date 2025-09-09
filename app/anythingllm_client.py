@@ -31,10 +31,10 @@ class AnythingLLMClient:
         self.timeout = int(os.getenv("ANYTHINGLLM_TIMEOUT", "30"))
         self.max_retries = int(os.getenv("ANYTHINGLLM_RETRIES", "3"))
         
-        log_and_print("INFO", "AnythingLLM Client initialisiert: %s", self.base_url)
+        log_and_print("INFO", "▶️ AnythingLLM Client initialisiert: %s", self.base_url)
         log_and_print("INFO", "Client Version: %s", CLIENT_VERSION)
-        log_and_print("INFO", "Konfigurierter Workspace: %s", self.workspace_slug)
-        log_and_print("INFO", "Timeout: %ds, Retries: %d", self.timeout, self.max_retries)
+        log_and_print("INFO", "🗂️ Konfigurierter Workspace: %s", self.workspace_slug)
+        log_and_print("INFO", "⏳ Timeout: %ds, Retries: %d", self.timeout, self.max_retries)
 
     def get_workspaces(self) -> Dict[str, Any]:
         """Ruft alle verfügbaren Workspaces ab"""
@@ -47,29 +47,29 @@ class AnythingLLMClient:
             if response.status_code == 200:
                 return response.json()
             else:
-                log_and_print("WARNING", "Workspaces abrufen fehlgeschlagen: HTTP %d", response.status_code)
+                log_and_print("WARNING", "⚠️ Workspaces abrufen fehlgeschlagen: HTTP %d", response.status_code)
                 return {}
         except Exception as e:
-            log_and_print("ERROR", "Fehler beim Abrufen der Workspaces: %s", e)
+            log_and_print("ERROR", "❌ Fehler beim Abrufen der Workspaces: %s", e)
             return {}
 
     def log_available_workspaces(self):
         """Loggt alle verfügbaren Workspaces beim Startup"""
-        log_and_print("INFO", "Lade verfügbare AnythingLLM Workspaces...")
+        log_and_print("INFO", "🔄 Lade verfügbare AnythingLLM Workspaces...")
         
         workspaces_data = self.get_workspaces()
         
         if not workspaces_data:
-            log_and_print("WARNING", "Keine Workspaces gefunden oder API nicht erreichbar")
+            log_and_print("WARNING", "⚠️ Keine Workspaces gefunden oder API nicht erreichbar")
             return
         
         workspaces = workspaces_data.get("workspaces", [])
         
         if not workspaces:
-            log_and_print("WARNING", "Workspace-Liste ist leer")
+            log_and_print("WARNING", "⚠️ Workspace-Liste ist leer")
             return
         
-        log_and_print("INFO", "Verfügbare Workspaces (%d gefunden):", len(workspaces))
+        log_and_print("INFO", "📁 Verfügbare Workspaces (%d gefunden):", len(workspaces))
         print("-" * 60)
         
         for workspace in workspaces:
@@ -100,14 +100,14 @@ class AnythingLLMClient:
             print("")
         
         print("-" * 60)
-        log_and_print("INFO", "Aktiver Workspace: %s", self.workspace_slug)
+        log_and_print("INFO", "🟢 Aktiver Workspace: %s", self.workspace_slug)
         
         # Prüfen ob der konfigurierte Workspace existiert
         configured_exists = any(ws.get("slug") == self.workspace_slug for ws in workspaces)
         if not configured_exists:
-            log_and_print("ERROR", "WARNUNG: Konfigurierter Workspace '%s' nicht gefunden!", self.workspace_slug)
+            log_and_print("ERROR", "🔴 WARNUNG: Konfigurierter Workspace '%s' nicht gefunden!", self.workspace_slug)
             available_slugs = [ws.get("slug") for ws in workspaces]
-            log_and_print("ERROR", "Verfügbare Slugs: %s", available_slugs)
+            log_and_print("ERROR", "🔵 Verfügbare Slugs: %s", available_slugs)
 
     def test_connection(self) -> bool:
         """Testet die Verbindung zu AnythingLLM"""
@@ -116,15 +116,15 @@ class AnythingLLMClient:
             if response.status_code == 200:
                 result = response.json()
                 if result.get("online"):
-                    log_and_print("INFO", "AnythingLLM-Ping erfolgreich")
+                    log_and_print("INFO", "✅ AnythingLLM-Ping erfolgreich")
                     
                     # Nach erfolgreichem Ping Workspaces laden
                     self.log_available_workspaces()
                     return True
-            log_and_print("WARNING", "AnythingLLM-Ping fehlgeschlagen: Status %d", response.status_code)
+            log_and_print("WARNING", "❌ AnythingLLM-Ping fehlgeschlagen: Status %d", response.status_code)
             return False
         except Exception as e:
-            log_and_print("ERROR", "AnythingLLM-Verbindungstest fehlgeschlagen: %s", e)
+            log_and_print("ERROR", "❌ AnythingLLM-Verbindungstest fehlgeschlagen: %s", e)
             return False
 
     def send_machine_error(self, machine: str, code: str, description: str) -> Optional[Dict[str, Any]]:
@@ -141,7 +141,7 @@ class AnythingLLMClient:
         # Retry-Mechanismus
         for attempt in range(self.max_retries):
             try:
-                log_and_print("INFO", "Sende an AnythingLLM (Versuch %d/%d)", attempt + 1, self.max_retries)
+                log_and_print("INFO", "🔄 Sende an AnythingLLM (Versuch %d/%d)", attempt + 1, self.max_retries)
                 
                 response = requests.post(
                     chat_url,
@@ -150,12 +150,12 @@ class AnythingLLMClient:
                     timeout=self.timeout
                 )
                 
-                log_and_print("INFO", "AnythingLLM Response Status: %d", response.status_code)
+                log_and_print("INFO", "🔵 AnythingLLM Response Status: %d", response.status_code)
                 
                 if response.status_code == 200:
                     try:
                         result = response.json()
-                        log_and_print("INFO", "AnythingLLM API erfolgreich (Versuch %d): %s/%s", 
+                        log_and_print("INFO", "✅ AnythingLLM API erfolgreich (Versuch %d): %s/%s", 
                                       attempt + 1, machine, code)
                         
                         # ERFOLG: Sofort return - keine weiteren Versuche!
@@ -182,10 +182,10 @@ class AnythingLLMClient:
                              attempt + 1, self.max_retries, self.timeout)
                              
             except requests.exceptions.ConnectionError as e:
-                log_and_print("ERROR", "Verbindungsfehler bei Versuch %d: %s", attempt + 1, e)
+                log_and_print("ERROR", "🔴 Verbindungsfehler bei Versuch %d: %s", attempt + 1, e)
                 
             except Exception as e:
-                log_and_print("ERROR", "API-Fehler bei Versuch %d: %s", attempt + 1, e)
+                log_and_print("ERROR", "❌ API-Fehler bei Versuch %d: %s", attempt + 1, e)
                 # Bei unerwarteten Fehlern: Retry-Schleife verlassen
                 break
             
@@ -193,11 +193,11 @@ class AnythingLLMClient:
             if attempt < self.max_retries - 1:
                 # Längere Wartezeit bei Timeout
                 wait_time = 5 if 'Timeout' in str(sys.exc_info()[1]) else 2
-                log_and_print("INFO", "Warte %ds vor nächstem Versuch...", wait_time)
+                log_and_print("INFO", "⏳ Warte %ds vor nächstem Versuch...", wait_time)
                 time.sleep(wait_time)
         
         # Nur hier ankommen wenn ALLE Versuche fehlgeschlagen sind
-        log_and_print("WARNING", "Alle %d API-Versuche fehlgeschlagen - verwende lokale Speicherung", 
+        log_and_print("WARNING", "❌ ❌ ❌ Alle %d API-Versuche fehlgeschlagen - verwende lokale Speicherung", 
                       self.max_retries)
         return self._store_locally(machine, code, description)
 
@@ -250,7 +250,7 @@ class AnythingLLMClient:
             }
             
         except Exception as e:
-            log_and_print("ERROR", "Lokale Speicherung fehlgeschlagen: %s", e)
+            log_and_print("ERROR", "💾 ❌ Lokale Speicherung fehlgeschlagen: %s", e)
             return {
                 "success": False,
                 "error": str(e),
