@@ -10,6 +10,8 @@ from datetime import datetime
 
 logger = logging.getLogger("iot-bridge.anythingllm")
 
+CLIENT_VERSION = "v20250909_104800_002"  # Version des Clients
+
 def log_and_print(level: str, message: str, *args):
     """Hilfsfunktion: Loggt UND gibt per print aus"""
     formatted_message = message % args if args else message
@@ -45,6 +47,7 @@ class AnythingLLMClient:
         self.max_retries = int(os.getenv("ANYTHINGLLM_RETRIES", "3"))
         
         log_and_print("INFO", "AnythingLLM Client initialisiert: %s", self.base_url)
+        log_and_print("INFO", "Client Version: %s", CLIENT_VERSION)
         log_and_print("INFO", "Konfigurierter Workspace: %s", self.workspace_slug)
         log_and_print("INFO", "Timeout: %ds, Retries: %d", self.timeout, self.max_retries)
 
