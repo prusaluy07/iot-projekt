@@ -7,7 +7,7 @@ import sys
 from typing import Optional, Dict, Any
 from datetime import datetime
 
-CLIENT_VERSION = "v20250909_002"
+CLIENT_VERSION = "v20250909_1151_004"
 
 def log_and_print(level: str, message: str, *args):
     """Hilfsfunktion: Nur print-Ausgabe"""
