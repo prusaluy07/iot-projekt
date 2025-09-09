@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 from icon_standards import get_icon, get_http_icon, get_status_icon, format_http_response, format_retry_message, ICONS
 
-CLIENT_VERSION = "v20250909_2205_007"
+CLIENT_VERSION = "anyllm_client_v20250909_2212_007"
 
 def log_and_print(level: str, message: str, *args):
     """Hilfsfunktion: Print-Ausgabe mit Icon-Standards"""
