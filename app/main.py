@@ -15,7 +15,7 @@ import uvicorn
 import threading
 
 APP_VERSION = "v20250909_104300_003"  # Format: vYYYYMMDD_Build-Nummer
-CLIENT_VERSION = "v20250909_100000_002"  # Version des anythingllm_client
+CLIENT_VERSION = "v20250909_104800_002"  # Version des anythingllm_client
 
 def log_and_print(level: str, message: str, *args):
     """Hilfsfunktion: Loggt UND gibt per print aus"""
