@@ -69,7 +69,12 @@ ICONS = {
         "ethernet": "🌐",
         "api": "🔗",
         "endpoint": "🎯",
-        "ping": "📊"
+        "ping": "📊",
+        "mqtt": "📡",        # ← HINZUGEFÜGT
+        "websocket": "🔌",
+        "http": "🌐",
+        "tcp": "🔗",
+        "udp": "📤"
     },
     
     # HTTP Status Codes
