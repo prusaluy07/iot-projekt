@@ -222,7 +222,7 @@ class AnythingLLMClient:
                 # Längere Wartezeit bei Timeout
                 wait_time = 5 if 'Timeout' in str(sys.exc_info()[1]) else 2
                 waiting_icon = get_icon("process", "pending")
-                log_and_print("INFO", f"{waiting_icon} Warte %ds vor nächstem Versuch...", wait_time)
+                #log_and_print("INFO", f"{waiting_icon} Warte %ds vor nächstem Versuch...", wait_time)
                 time.sleep(wait_time)
         
         # Nur hier ankommen wenn ALLE Versuche fehlgeschlagen sind
