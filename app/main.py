@@ -13,10 +13,10 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
 import threading
+from anythingllm_client import AnythingLLMClient, send_to_anythingllm, CLIENT_VERSION
 from icon_standards import get_icon, get_status_icon, format_status_message, ICONS
 
-APP_VERSION = "app_v20250909_2210_007"
-CLIENT_VERSION = "app_clinet_v20250909_2210_007"
+APP_VERSION = "app_v20250909_2238_008"
 
 def log_and_print(level: str, message: str, *args):
     """Hilfsfunktion: Print-Ausgabe mit Icon-Standards"""
@@ -340,10 +340,10 @@ async def root():
     return {
         "message": "IoT-AnythingLLM Bridge läuft",
         "version": APP_VERSION,
-        "client_version": CLIENT_VERSION,
+        "client_version": CLIENT_VERSION,  # ← Verwendet die importierte Version
         "build_info": {
             "app_version": APP_VERSION,
-            "client_version": CLIENT_VERSION,
+            "client_version": CLIENT_VERSION,  # ← Verwendet die importierte Version
             "build_date": "2025-09-09",
             "last_update": "Icon-Standards und verbessertes Logging"
         },
@@ -609,8 +609,8 @@ if __name__ == "__main__":
         print(f"{ICONS['time']['waiting']} Warte {startup_delay} Sekunden vor System-Start...")
         time.sleep(startup_delay)
     
-    log_and_print("INFO", f"{ICONS['system']['start']} Starte IoT-AnythingLLM Bridge %s...", APP_VERSION)
-    log_and_print("INFO", f"{ICONS['data']['config']} Client Version: %s", CLIENT_VERSION)
+    log_and_print("INFO", f"{ICONS['system']['start']} Starte Python-AnythingLLM main %s", APP_VERSION)
+    log_and_print("INFO", f"{ICONS['data']['config']} AnythingLLM_Client Version: %s", CLIENT_VERSION)
     log_and_print("INFO", f"{ICONS['system']['config']} Umgebungsvariablen:")
     log_and_print("INFO", f"   {ICONS['network']['api']} ANYTHINGLLM_URL: %s", os.getenv('ANYTHINGLLM_URL', 'NICHT_GESETZT'))
     log_and_print("INFO", f"   {ICONS['network']['mqtt']} ENABLE_MQTT: %s", os.getenv('ENABLE_MQTT', 'false'))
