@@ -6,72 +6,16 @@ import logging
 import sys
 from typing import Optional, Dict, Any
 from datetime import datetime
+from icon_standards import get_icon, get_http_icon, get_status_icon, format_http_response, format_retry_message, ICONS
 
-CLIENT_VERSION = "v20250909_2012_006"
-
-def get_status_icon(status_type: str, value: Any) -> str:
-    """Gibt dynamisches Icon basierend auf Status und Wert zurück"""
-    
-    if status_type == "http_status":
-        if 200 <= value < 300:
-            return "🟢"  # Erfolg
-        elif 300 <= value < 400:
-            return "🔵"  # Umleitung/Info
-        elif 400 <= value < 500:
-            return "🔴"  # Client-Fehler
-        elif 500 <= value:
-            return "🟡"  # Server-Fehler
-        else:
-            return "⚪"  # Unbekannt
-    
-    elif status_type == "connection":
-        if value in ["connected", "online", "bereit", "erfolgreich"]:
-            return "🟢"
-        elif value in ["connecting", "standby", "wartet", "verarbeitung"]:
-            return "🔵"
-        elif value in ["warning", "teilweise", "timeout"]:
-            return "🟡"
-        elif value in ["disconnected", "offline", "fehler", "fehlgeschlagen"]:
-            return "🔴"
-        else:
-            return "⚪"
-    
-    elif status_type == "process":
-        if value in ["success", "completed", "erfolgreich"]:
-            return "🟢"
-        elif value in ["running", "processing", "läuft"]:
-            return "🔵"
-        elif value in ["warning", "partial", "warnung"]:
-            return "🟡"
-        elif value in ["error", "failed", "fehler"]:
-            return "🔴"
-        else:
-            return "⚪"
-    
-    elif status_type == "retry_attempt":
-        if value == 1:
-            return "🔵"  # Erster Versuch
-        elif value <= 3:
-            return "🟡"  # Weitere Versuche
-        else:
-            return "🔴"  # Viele Versuche
-    
-    return "⚪"  # Default
+CLIENT_VERSION = "v20250909_2205_007"
 
 def log_and_print(level: str, message: str, *args):
-    """Hilfsfunktion: Nur print-Ausgabe mit Level-Icons"""
+    """Hilfsfunktion: Print-Ausgabe mit Icon-Standards"""
     formatted_message = message % args if args else message
     
-    # Level-spezifische Icons
-    level_icons = {
-        "INFO": "ℹ️",
-        "WARNING": "⚠️",
-        "ERROR": "❌",
-        "DEBUG": "🔍",
-        "SUCCESS": "✅"
-    }
-    
-    level_icon = level_icons.get(level, "📝")
+    # Icon basierend auf Log-Level
+    level_icon = get_icon("log_level", level, ICONS["log_level"]["info"])
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] {level_icon} {formatted_message}")
 
@@ -89,10 +33,10 @@ class AnythingLLMClient:
         self.timeout = int(os.getenv("ANYTHINGLLM_TIMEOUT", "30"))
         self.max_retries = int(os.getenv("ANYTHINGLLM_RETRIES", "3"))
         
-        log_and_print("INFO", "▶️ AnythingLLM Client initialisiert: %s", self.base_url)
-        log_and_print("INFO", "📊 Client Version: %s", CLIENT_VERSION)
-        log_and_print("INFO", "🗂️ Konfigurierter Workspace: %s", self.workspace_slug)
-        log_and_print("INFO", "⏳ Timeout: %ds, Retries: %d", self.timeout, self.max_retries)
+        log_and_print("INFO", f"{ICONS['system']['start']} AnythingLLM Client initialisiert: %s", self.base_url)
+        log_and_print("INFO", f"{ICONS['data']['config']} Client Version: %s", CLIENT_VERSION)
+        log_and_print("INFO", f"{ICONS['workspace']['active']} Konfigurierter Workspace: %s", self.workspace_slug)
+        log_and_print("INFO", f"{ICONS['time']['timer']} Timeout: %ds, Retries: %d", self.timeout, self.max_retries)
 
     def get_workspaces(self) -> Dict[str, Any]:
         """Ruft alle verfügbaren Workspaces ab"""
@@ -103,35 +47,38 @@ class AnythingLLMClient:
                 timeout=10
             )
             
-            status_icon = get_status_icon("http_status", response.status_code)
+            status_icon = get_http_icon(response.status_code)
             
             if response.status_code == 200:
-                log_and_print("INFO", "%s Workspaces erfolgreich abgerufen (HTTP %d)", status_icon, response.status_code)
+                log_and_print("INFO", f"{status_icon} Workspaces erfolgreich abgerufen (HTTP %d)", response.status_code)
                 return response.json()
             else:
-                log_and_print("WARNING", "%s Workspaces abrufen fehlgeschlagen: HTTP %d", status_icon, response.status_code)
+                log_and_print("WARNING", f"{status_icon} Workspaces abrufen fehlgeschlagen: HTTP %d", response.status_code)
                 return {}
         except Exception as e:
-            log_and_print("ERROR", "%s Fehler beim Abrufen der Workspaces: %s", get_status_icon("connection", "fehler"), e)
+            error_icon = get_status_icon("error")
+            log_and_print("ERROR", f"{error_icon} Fehler beim Abrufen der Workspaces: %s", e)
             return {}
 
     def log_available_workspaces(self):
         """Loggt alle verfügbaren Workspaces beim Startup"""
-        log_and_print("INFO", "🔄 Lade verfügbare AnythingLLM Workspaces...")
+        log_and_print("INFO", f"{ICONS['system']['loading']} Lade verfügbare AnythingLLM Workspaces...")
         
         workspaces_data = self.get_workspaces()
         
         if not workspaces_data:
-            log_and_print("WARNING", "%s Keine Workspaces gefunden oder API nicht erreichbar", get_status_icon("connection", "offline"))
+            offline_icon = get_status_icon("offline")
+            log_and_print("WARNING", f"{offline_icon} Keine Workspaces gefunden oder API nicht erreichbar")
             return
         
         workspaces = workspaces_data.get("workspaces", [])
         
         if not workspaces:
-            log_and_print("WARNING", "%s Workspace-Liste ist leer", get_status_icon("process", "warning"))
+            warning_icon = get_status_icon("warning")
+            log_and_print("WARNING", f"{warning_icon} Workspace-Liste ist leer")
             return
         
-        log_and_print("INFO", "📁 Verfügbare Workspaces (%d gefunden):", len(workspaces))
+        log_and_print("INFO", f"{ICONS['data']['folder']} Verfügbare Workspaces (%d gefunden):", len(workspaces))
         print("-" * 60)
         
         for workspace in workspaces:
@@ -152,52 +99,52 @@ class AnythingLLMClient:
             
             # Workspace-Status
             is_active = workspace_slug == self.workspace_slug
-            status_icon = get_status_icon("connection", "online" if is_active else "standby")
+            status_icon = get_status_icon("online" if is_active else "standby")
             
-            log_and_print("INFO", "%s ID: %s | Name: %s", status_icon, workspace_id, workspace_name)
-            log_and_print("INFO", "    📅 Slug: %s | Erstellt: %s", workspace_slug, created_str)
+            log_and_print("INFO", f"{status_icon} ID: %s | Name: %s", workspace_id, workspace_name)
+            log_and_print("INFO", f"    {ICONS['time']['calendar']} Slug: %s | Erstellt: %s", workspace_slug, created_str)
             
             # API-URL für diesen Workspace
             api_url = f"{self.base_url}/api/v1/workspace/{workspace_slug}/chat"
-            log_and_print("INFO", "    🔗 API: %s", api_url)
+            log_and_print("INFO", f"    {ICONS['network']['api']} API: %s", api_url)
             print("")
         
         print("-" * 60)
-        log_and_print("INFO", "%s Aktiver Workspace: %s", get_status_icon("connection", "online"), self.workspace_slug)
+        active_icon = get_status_icon("online")
+        log_and_print("INFO", f"{active_icon} Aktiver Workspace: %s", self.workspace_slug)
         
         # Prüfen ob der konfigurierte Workspace existiert
         configured_exists = any(ws.get("slug") == self.workspace_slug for ws in workspaces)
         if not configured_exists:
-            log_and_print("ERROR", "%s WARNUNG: Konfigurierter Workspace '%s' nicht gefunden!", 
-                         get_status_icon("connection", "fehler"), self.workspace_slug)
+            error_icon = get_status_icon("error")
+            log_and_print("ERROR", f"{error_icon} WARNUNG: Konfigurierter Workspace '%s' nicht gefunden!", self.workspace_slug)
             available_slugs = [ws.get("slug") for ws in workspaces]
-            log_and_print("ERROR", "%s Verfügbare Slugs: %s", get_status_icon("process", "fehler"), available_slugs)
+            info_icon = get_status_icon("standby")
+            log_and_print("ERROR", f"{info_icon} Verfügbare Slugs: %s", available_slugs)
 
     def test_connection(self) -> bool:
         """Testet die Verbindung zu AnythingLLM"""
         try:
-            log_and_print("INFO", "🔍 Teste AnythingLLM Verbindung...")
+            log_and_print("INFO", f"{ICONS['network']['ping']} Teste AnythingLLM Verbindung...")
             response = requests.get(f"{self.base_url}/api/ping", timeout=5)
             
-            status_icon = get_status_icon("http_status", response.status_code)
+            status_icon = get_http_icon(response.status_code)
             
             if response.status_code == 200:
                 result = response.json()
                 if result.get("online"):
-                    log_and_print("SUCCESS", "%s AnythingLLM-Ping erfolgreich (HTTP %d)", 
-                                 status_icon, response.status_code)
+                    log_and_print("SUCCESS", f"{status_icon} AnythingLLM-Ping erfolgreich (HTTP %d)", response.status_code)
                     
                     # Nach erfolgreichem Ping Workspaces laden
                     self.log_available_workspaces()
                     return True
             
-            log_and_print("WARNING", "%s AnythingLLM-Ping fehlgeschlagen: Status %d", 
-                         status_icon, response.status_code)
+            log_and_print("WARNING", f"{status_icon} AnythingLLM-Ping fehlgeschlagen: Status %d", response.status_code)
             return False
             
         except Exception as e:
-            log_and_print("ERROR", "%s AnythingLLM-Verbindungstest fehlgeschlagen: %s", 
-                         get_status_icon("connection", "fehler"), e)
+            error_icon = get_status_icon("error")
+            log_and_print("ERROR", f"{error_icon} AnythingLLM-Verbindungstest fehlgeschlagen: %s", e)
             return False
 
     def send_machine_error(self, machine: str, code: str, description: str) -> Optional[Dict[str, Any]]:
@@ -209,14 +156,13 @@ class AnythingLLMClient:
         chat_url = f"{self.base_url}/api/v1/workspace/{self.workspace_slug}/chat"
         payload = {"message": message}
         
-        log_and_print("INFO", "🚀 Starte API-Übertragung: %s/%s", machine, code)
+        log_and_print("INFO", f"{ICONS['machine']['factory']} Starte API-Übertragung: %s/%s", machine, code)
         
         # Retry-Mechanismus
         for attempt in range(self.max_retries):
             try:
-                attempt_icon = get_status_icon("retry_attempt", attempt + 1)
-                log_and_print("INFO", "%s Sende an AnythingLLM (Versuch %d/%d)", 
-                             attempt_icon, attempt + 1, self.max_retries)
+                retry_msg = format_retry_message(attempt + 1, self.max_retries, "Sende an AnythingLLM")
+                log_and_print("INFO", retry_msg)
                 
                 response = requests.post(
                     chat_url,
@@ -225,14 +171,15 @@ class AnythingLLMClient:
                     timeout=self.timeout
                 )
                 
-                status_icon = get_status_icon("http_status", response.status_code)
-                log_and_print("INFO", "%s AnythingLLM Response Status: %d", status_icon, response.status_code)
+                http_response = format_http_response(response.status_code, "AnythingLLM Response")
+                log_and_print("INFO", http_response)
                 
                 if response.status_code == 200:
                     try:
                         result = response.json()
-                        log_and_print("SUCCESS", "%s AnythingLLM API erfolgreich (Versuch %d): %s/%s", 
-                                      get_status_icon("process", "success"), attempt + 1, machine, code)
+                        success_icon = get_icon("process", "success")
+                        log_and_print("SUCCESS", f"{success_icon} AnythingLLM API erfolgreich (Versuch %d): %s/%s", 
+                                      attempt + 1, machine, code)
                         
                         # ERFOLG: Sofort return - keine weiteren Versuche!
                         return {
@@ -246,25 +193,27 @@ class AnythingLLMClient:
                         }
                         
                     except json.JSONDecodeError as e:
-                        log_and_print("ERROR", "%s Invalid JSON response (Versuch %d): %s", 
-                                     get_status_icon("process", "fehler"), attempt + 1, e)
+                        error_icon = get_icon("process", "error")
+                        log_and_print("ERROR", f"{error_icon} Invalid JSON response (Versuch %d): %s", attempt + 1, e)
                         log_and_print("DEBUG", "Raw response: %s", response.text[:500])
                         
                 else:
-                    log_and_print("WARNING", "%s HTTP Error %d (Versuch %d): %s", 
-                                 status_icon, response.status_code, attempt + 1, response.text[:200])
+                    status_icon = get_http_icon(response.status_code)
+                    log_and_print("WARNING", f"{status_icon} HTTP Error %d (Versuch %d): %s", 
+                                 response.status_code, attempt + 1, response.text[:200])
                              
             except requests.exceptions.Timeout:
-                log_and_print("WARNING", "%s Timeout bei Versuch %d/%d (nach %ds)", 
-                             get_status_icon("connection", "timeout"), attempt + 1, self.max_retries, self.timeout)
+                timeout_icon = get_status_icon("timeout")
+                log_and_print("WARNING", f"{timeout_icon} Timeout bei Versuch %d/%d (nach %ds)", 
+                             attempt + 1, self.max_retries, self.timeout)
                              
             except requests.exceptions.ConnectionError as e:
-                log_and_print("ERROR", "%s Verbindungsfehler bei Versuch %d: %s", 
-                             get_status_icon("connection", "fehler"), attempt + 1, e)
+                connection_icon = get_status_icon("error")
+                log_and_print("ERROR", f"{connection_icon} Verbindungsfehler bei Versuch %d: %s", attempt + 1, e)
                 
             except Exception as e:
-                log_and_print("ERROR", "%s API-Fehler bei Versuch %d: %s", 
-                             get_status_icon("process", "fehler"), attempt + 1, e)
+                error_icon = get_icon("process", "error")
+                log_and_print("ERROR", f"{error_icon} API-Fehler bei Versuch %d: %s", attempt + 1, e)
                 # Bei unerwarteten Fehlern: Retry-Schleife verlassen
                 break
             
@@ -272,14 +221,14 @@ class AnythingLLMClient:
             if attempt < self.max_retries - 1:
                 # Längere Wartezeit bei Timeout
                 wait_time = 5 if 'Timeout' in str(sys.exc_info()[1]) else 2
-                log_and_print("INFO", "%s Warte %ds vor nächstem Versuch...", 
-                             get_status_icon("process", "wartet"), wait_time)
+                waiting_icon = get_icon("process", "pending")
+                log_and_print("INFO", f"{waiting_icon} Warte %ds vor nächstem Versuch...", wait_time)
                 time.sleep(wait_time)
         
         # Nur hier ankommen wenn ALLE Versuche fehlgeschlagen sind
-        log_and_print("ERROR", "%s %s %s Alle %d API-Versuche fehlgeschlagen - verwende lokale Speicherung", 
-                      get_status_icon("process", "fehler"), get_status_icon("process", "fehler"), 
-                      get_status_icon("process", "fehler"), self.max_retries)
+        failed_icons = f"{ICONS['retry']['failed']} {ICONS['retry']['failed']} {ICONS['retry']['failed']}"
+        log_and_print("ERROR", f"{failed_icons} Alle %d API-Versuche fehlgeschlagen - verwende lokale Speicherung", 
+                      self.max_retries)
         return self._store_locally(machine, code, description)
 
     def _store_locally(self, machine: str, code: str, description: str) -> Dict[str, Any]:
@@ -318,9 +267,10 @@ class AnythingLLMClient:
             with open(import_filename, 'a', encoding='utf-8') as f:
                 f.write(f"\n{error_data['anythingllm_import_text']}\n")
             
-            log_and_print("SUCCESS", "%s Maschinenfehler lokal gespeichert: %s/%s", 
-                         get_status_icon("process", "success"), machine, code)
-            log_and_print("DEBUG", "📁 JSON: %s, 📄 Import: %s", json_filename, import_filename)
+            success_icon = get_icon("process", "success")
+            log_and_print("SUCCESS", f"{success_icon} Maschinenfehler lokal gespeichert: %s/%s", machine, code)
+            log_and_print("DEBUG", f"{ICONS['data']['json']} JSON: %s, {ICONS['data']['file']} Import: %s", 
+                         json_filename, import_filename)
             
             return {
                 "success": True,
@@ -332,8 +282,8 @@ class AnythingLLMClient:
             }
             
         except Exception as e:
-            log_and_print("ERROR", "%s Lokale Speicherung fehlgeschlagen: %s", 
-                         get_status_icon("process", "fehler"), e)
+            error_icon = get_icon("process", "error")
+            log_and_print("ERROR", f"{error_icon} Lokale Speicherung fehlgeschlagen: %s", e)
             return {
                 "success": False,
                 "error": str(e),
@@ -349,7 +299,7 @@ class AnythingLLMClient:
             payload["conversationId"] = conversation_id
         
         try:
-            log_and_print("DEBUG", "💬 Sende Chat-Nachricht: %s", message[:100])
+            log_and_print("DEBUG", f"{ICONS['network']['api']} Sende Chat-Nachricht: %s", message[:100])
             response = requests.post(
                 chat_url, 
                 headers=self.headers, 
@@ -357,19 +307,19 @@ class AnythingLLMClient:
                 timeout=self.timeout
             )
             
-            status_icon = get_status_icon("http_status", response.status_code)
+            status_icon = get_http_icon(response.status_code)
             
             if response.status_code == 200:
                 result = response.json()
-                log_and_print("SUCCESS", "%s Chat-Nachricht erfolgreich gesendet", status_icon)
+                log_and_print("SUCCESS", f"{status_icon} Chat-Nachricht erfolgreich gesendet")
                 return result
             else:
-                log_and_print("WARNING", "%s Chat-Nachricht fehlgeschlagen: HTTP %d", 
-                             status_icon, response.status_code)
+                log_and_print("WARNING", f"{status_icon} Chat-Nachricht fehlgeschlagen: HTTP %d", response.status_code)
                 return None
                 
         except Exception as e:
-            log_and_print("ERROR", "%s Chat-Fehler: %s", get_status_icon("process", "fehler"), e)
+            error_icon = get_icon("process", "error")
+            log_and_print("ERROR", f"{error_icon} Chat-Fehler: %s", e)
             return None
 
     def get_stored_errors(self, date: str = None) -> list:
@@ -383,20 +333,21 @@ class AnythingLLMClient:
             if os.path.exists(filename):
                 with open(filename, 'r', encoding='utf-8') as f:
                     errors = json.load(f)
-                    log_and_print("SUCCESS", "%s %d Fehler aus lokaler Datei geladen", 
-                                 get_status_icon("process", "success"), len(errors))
+                    success_icon = get_icon("process", "success")
+                    log_and_print("SUCCESS", f"{success_icon} %d Fehler aus lokaler Datei geladen", len(errors))
                     return errors
-            log_and_print("INFO", "%s Keine lokalen Fehler für %s gefunden", 
-                         get_status_icon("process", "standby"), date)
+            
+            standby_icon = get_status_icon("standby")
+            log_and_print("INFO", f"{standby_icon} Keine lokalen Fehler für %s gefunden", date)
             return []
         except Exception as e:
-            log_and_print("ERROR", "%s Fehler beim Laden der Daten: %s", 
-                         get_status_icon("process", "fehler"), e)
+            error_icon = get_icon("process", "error")
+            log_and_print("ERROR", f"{error_icon} Fehler beim Laden der Daten: %s", e)
             return []
 
     def health_check(self) -> Dict[str, Any]:
         """Vollständiger Gesundheitscheck"""
-        log_and_print("INFO", "🏥 Führe Gesundheitscheck durch...")
+        log_and_print("INFO", f"{ICONS['system']['health']} Führe Gesundheitscheck durch...")
         
         health = {
             "anythingllm_ping": False,
@@ -416,11 +367,12 @@ class AnythingLLMClient:
             response = requests.get(f"{self.base_url}/api/ping", timeout=5)
             health["anythingllm_ping"] = response.status_code == 200 and response.json().get("online", False)
             
-            ping_icon = get_status_icon("connection", "online" if health["anythingllm_ping"] else "offline")
-            log_and_print("INFO", "%s Ping-Test: %s", ping_icon, 
-                         "Erfolgreich" if health["anythingllm_ping"] else "Fehlgeschlagen")
+            ping_icon = get_status_icon("online" if health["anythingllm_ping"] else "offline")
+            status_text = "Erfolgreich" if health["anythingllm_ping"] else "Fehlgeschlagen"
+            log_and_print("INFO", f"{ping_icon} Ping-Test: %s", status_text)
         except:
-            log_and_print("WARNING", "%s Ping-Test fehlgeschlagen", get_status_icon("connection", "fehler"))
+            error_icon = get_status_icon("error")
+            log_and_print("WARNING", f"{error_icon} Ping-Test fehlgeschlagen")
         
         # Workspace-Test
         if health["anythingllm_ping"]:
@@ -429,13 +381,14 @@ class AnythingLLMClient:
             health["workspace_exists"] = any(ws.get("slug") == self.workspace_slug for ws in workspaces)
             health["api_key_valid"] = len(workspaces) > 0
             
-            ws_icon = get_status_icon("connection", "online" if health["workspace_exists"] else "fehler")
-            api_icon = get_status_icon("connection", "online" if health["api_key_valid"] else "fehler")
+            ws_icon = get_status_icon("online" if health["workspace_exists"] else "error")
+            api_icon = get_status_icon("online" if health["api_key_valid"] else "error")
             
-            log_and_print("INFO", "%s Workspace-Check: %s", ws_icon, 
-                         "Gefunden" if health["workspace_exists"] else "Nicht gefunden")
-            log_and_print("INFO", "%s API-Key-Check: %s", api_icon, 
-                         "Gültig" if health["api_key_valid"] else "Ungültig")
+            ws_text = "Gefunden" if health["workspace_exists"] else "Nicht gefunden"
+            api_text = "Gültig" if health["api_key_valid"] else "Ungültig"
+            
+            log_and_print("INFO", f"{ws_icon} Workspace-Check: %s", ws_text)
+            log_and_print("INFO", f"{api_icon} API-Key-Check: %s", api_text)
         
         # Lokale Speicherung testen
         try:
@@ -445,11 +398,12 @@ class AnythingLLMClient:
                 f.write("test")
             os.remove(test_file)
             health["local_storage"] = True
-            log_and_print("SUCCESS", "%s Lokale Speicherung: Funktionsfähig", 
-                         get_status_icon("process", "success"))
+            
+            storage_icon = get_icon("process", "success")
+            log_and_print("SUCCESS", f"{storage_icon} Lokale Speicherung: Funktionsfähig")
         except:
-            log_and_print("ERROR", "%s Lokale Speicherung: Fehlgeschlagen", 
-                         get_status_icon("process", "fehler"))
+            storage_icon = get_icon("process", "error")
+            log_and_print("ERROR", f"{storage_icon} Lokale Speicherung: Fehlgeschlagen")
         
         return health
 
@@ -462,14 +416,15 @@ def send_to_anythingllm(machine: str, code: str, description: str) -> Optional[D
 
 if __name__ == "__main__":
     # Test-Skript
-    print("🧪 AnythingLLM Client Test")
+    print(f"{ICONS['system']['start']} AnythingLLM Client Test")
     print("=" * 40)
     
     client = AnythingLLMClient()
     
     # Verbindungstest
     if client.test_connection():
-        log_and_print("SUCCESS", "Verbindung erfolgreich")
+        success_icon = get_icon("process", "success")
+        log_and_print("SUCCESS", f"{success_icon} Verbindung erfolgreich")
         
         # Health Check
         health = client.health_check()
@@ -480,4 +435,5 @@ if __name__ == "__main__":
         print(f"Test-Ergebnis: {result}")
         
     else:
-        log_and_print("ERROR", "Verbindung fehlgeschlagen")
+        error_icon = get_icon("process", "error")
+        log_and_print("ERROR", f"{error_icon} Verbindung fehlgeschlagen")
