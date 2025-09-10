@@ -10,16 +10,60 @@ services:
     environment:
       - ANYTHINGLLM_TIMEOUT=30      # Timeout pro Versuch (Sekunden)
       - ANYTHINGLLM_RETRIES=30       # Anzahl Wiederholungsversuche
-      - STARTUP_DELAY=5                        # Wartezeit vor System-Start (Sekunden)
-      - AUTO_GENERATOR_INITIAL_DELAY=10        # Wartezeit vor erstem Auto-Fehler (Sekunden)  
-      - AUTO_GENERATOR_INTERVAL=59             # Intervall zwischen Auto-Fehlern (Sekunden)
-      - ENABLE_AUTO_GENERATOR=true             # Auto-Generator aktivieren
-      - ANYTHINGLLM_URL=http://172.20.0.3:3001  # ← Gateway des anythingllm-Netzwerks
-      - ANYTHINGLLM_API_KEY=KE7053N-30JM5PZ-KAPMXDP-KXJQC3N
       - MQTT_BROKER=localhost
       - PYTHONUNBUFFERED=1
       - ENABLE_MQTT=false
+      # System-Konfiguration
+      - STARTUP_DELAY=5
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=standard
+      
+      # AnythingLLM Integration
+      - ANYTHINGLLM_URL=http://172.18.0.1:3001
+      - ANYTHINGLLM_API_KEY=KE7053N-30JM5PZ-KAPMXDP-KXJQC3N
+      
+      # OPC UA Multi-Server Konfiguration
+      - ENABLE_OPCUA=true
+      
+      # Production Server (172.30.2.11)
+      - OPCUA_PRODUCTION_SERVER_ENABLED=true
+      - OPCUA_PRODUCTION_SERVER_USERNAME=opcuser
+      - OPCUA_PRODUCTION_SERVER_PASSWORD=production123
+      - OPCUA_PRODUCTION_SERVER_TIMEOUT=15
+      - OPCUA_PRODUCTION_SERVER_INTERVAL=2000
+      - OPCUA_PRODUCTION_SERVER_MAX_RETRIES=5
+      
+      # Quality Server (172.30.0.11)
+      - OPCUA_QUALITY_SERVER_ENABLED=false
+      - OPCUA_QUALITY_SERVER_USERNAME=quality_user
+      - OPCUA_QUALITY_SERVER_PASSWORD=quality456
+      - OPCUA_QUALITY_SERVER_TIMEOUT=10
+      - OPCUA_QUALITY_SERVER_INTERVAL=1500
+      
+      # Local PLC (192.168.2.1)
+      - OPCUA_LOCAL_PLC_ENABLED=false
+      - OPCUA_LOCAL_PLC_USERNAME=plc_admin
+      - OPCUA_LOCAL_PLC_PASSWORD=wago789
+      - OPCUA_LOCAL_PLC_TIMEOUT=20
+      - OPCUA_LOCAL_PLC_INTERVAL=1000
+      
+      # MQTT Konfiguration (optional)
+      - ENABLE_MQTT=false
+      - MQTT_BROKER=192.168.1.100
+      - MQTT_PORT=1883
+      
+      # Auto-Generator
+      - ENABLE_AUTO_GENERATOR=true
+      - AUTO_GENERATOR_INITIAL_DELAY=10
+      - AUTO_GENERATOR_INTERVAL=60
+      
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
     restart: unless-stopped
+    networks:
+      - iot-network
+
+networks:
+  iot-network:
+    driver: bridge
