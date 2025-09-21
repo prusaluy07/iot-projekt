@@ -3,32 +3,45 @@ version: "3.9"
 services:
   ollama:
     image: ollama/ollama:latest
+    container_name: ollama
     ports:
       - "11434:11434"
     volumes:
-      - /docker/ollama:/root/.ollama   # Modelle + Config direkt auf /docker
+      - /docker/ollama:/root/.ollama
+    networks:
+      - ollama-net
     restart: always
 
   openwebui:
     image: ghcr.io/open-webui/open-webui:main
+    container_name: openwebui
     ports:
       - "3000:8080"
     volumes:
-      - /docker/openwebui:/app/backend/data   # persistent auf /docker
+      - /docker/openwebui:/app/backend/data
     environment:
-      - OLLAMA_API_BASE=http://ollama:11434
+      - OLLAMA_API_BASE=http://ollama:11434   # Container-Name als Host
     depends_on:
       - ollama
+    networks:
+      - ollama-net
     restart: always
 
   middleware:
     build:
       context: ./middleware
       dockerfile: Dockerfile
+    container_name: middleware
     ports:
       - "8080:8080"
     volumes:
-      - /docker/middleware:/app   # Code + Daten persistent auf /docker
+      - /docker/middleware:/app
     depends_on:
       - ollama
+    networks:
+      - ollama-net
     restart: always
+
+networks:
+  ollama-net:
+    driver: bridge
