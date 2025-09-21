@@ -7,7 +7,7 @@ app = FastAPI()
 clients = []
 
 OLLAMA_URL = "http://ollama:11434/v1/chat/completions"
-MODEL = "llama3.1"   # Passe das Modell an, das du in Ollama installiert hast
+MODEL = "llama3.2:latest"   # Passe das Modell an, das du in Ollama installiert hast
 
 
 @app.post("/chat/send")
