@@ -35,7 +35,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - /docker/middleware:/app   # Code persistent
+      - /docker/middleware   # Code persistent
     depends_on:
       - ollama
     networks:
